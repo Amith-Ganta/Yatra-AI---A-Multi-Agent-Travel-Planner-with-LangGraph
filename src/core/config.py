@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Optional
 
-from pydantic import Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings
 
 from .errors import ConfigError, MissingAPIKeyError
@@ -67,7 +67,12 @@ class LLMConfig(BaseSettings):
             raise MissingAPIKeyError("DEEPSEEK_API_KEY is required when using DeepSeek models")
         return v
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class DatabaseConfig(BaseSettings):
@@ -90,7 +95,12 @@ class DatabaseConfig(BaseSettings):
             raise ConfigError(f"DATABASE_URL must use postgresql:// scheme, got: {v}")
         return v
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class AppConfig(BaseSettings):
@@ -102,7 +112,12 @@ class AppConfig(BaseSettings):
     host: str = Field(default="0.0.0.0", alias="app_host")
     port: int = Field(default=8000, alias="app_port")
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class EvalConfig(BaseSettings):
@@ -130,7 +145,12 @@ class EvalConfig(BaseSettings):
         description="Tokens per minute limiter for eval judges",
     )
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 class Settings(BaseSettings):
@@ -141,7 +161,12 @@ class Settings(BaseSettings):
     app: AppConfig = Field(default_factory=AppConfig)
     eval: EvalConfig = Field(default_factory=EvalConfig)
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
 
 
 settings = Settings()
