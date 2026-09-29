@@ -4,12 +4,12 @@ import json
 from uuid import uuid4
 from typing import Optional
 
-from langgraph.checkpoint.base import BaseCheckpointer
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from .db import DatabasePool
 
 
-class PostgreSQLCheckpointer(BaseCheckpointer):
+class PostgreSQLCheckpointer(BaseCheckpointSaver):
     """LangGraph checkpointer backed by PostgreSQL."""
 
     def __init__(self, db_pool: DatabasePool):
