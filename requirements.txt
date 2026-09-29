@@ -11,12 +11,14 @@ langchain==0.1.10
 langchain-core==0.1.20
 langchain-groq==0.1.0
 langchain-openai==0.1.0
+langgraph==0.0.32
 
 # Database (async PostgreSQL)
 sqlalchemy==2.0.23
 sqlalchemy-stubs==0.4
 psycopg==3.1.13
 psycopg-binary==3.1.13
+psycopg-pool==3.1.13
 asyncpg==0.29.0
 
 # FastAPI (Phase 6)
