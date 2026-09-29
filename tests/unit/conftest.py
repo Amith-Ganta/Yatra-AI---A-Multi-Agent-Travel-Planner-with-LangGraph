@@ -35,46 +35,73 @@ async def _mock_acquire():
 
 async def _mock_execute_insert(query, params):
     """Simulate INSERT/UPDATE operations."""
+    from datetime import datetime
     query_lower = query.lower()
 
-    if "threads" in query_lower and "insert" in query_lower:
-        # INSERT INTO threads (thread_id, user_id, metadata, created_at) VALUES (...)
-        thread_id, user_id, metadata = params[0], params[1], params[2]
-        _test_db["threads"][thread_id] = {"id": thread_id, "user_id": user_id, "metadata": metadata}
-    elif "messages" in query_lower and "insert" in query_lower:
-        # INSERT INTO messages (thread_id, role, content, metadata, created_at) VALUES (...)
-        thread_id, role, content, metadata = params[0], params[1], params[2], params[3]
-        if thread_id not in _test_db["messages"]:
-            _test_db["messages"][thread_id] = []
-        _test_db["messages"][thread_id].append({"thread_id": thread_id, "role": role, "content": content, "metadata": metadata})
-    elif "checkpoints" in query_lower and "insert" in query_lower:
+    if "insert into threads" in query_lower:
+        # INSERT INTO threads (thread_id, user_id, metadata, created_at, updated_at) VALUES (...)
+        if len(params) >= 3:
+            thread_id, user_id, metadata = params[0], params[1], params[2]
+            _test_db["threads"][thread_id] = {
+                "id": thread_id,
+                "user_id": user_id,
+                "metadata": metadata,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
+            }
+    elif "insert into messages" in query_lower:
+        # INSERT INTO messages (message_id, thread_id, role, content, metadata, created_at) VALUES (...)
+        if len(params) >= 5:
+            message_id, thread_id, role, content, metadata = params[0], params[1], params[2], params[3], params[4]
+            if thread_id not in _test_db["messages"]:
+                _test_db["messages"][thread_id] = []
+            _test_db["messages"][thread_id].append({
+                "message_id": message_id,
+                "thread_id": thread_id,
+                "role": role,
+                "content": content,
+                "metadata": metadata,
+                "created_at": datetime.now(),
+            })
+    elif "insert into checkpoints" in query_lower:
         # INSERT INTO checkpoints (checkpoint_id, thread_id, step, state, created_at) VALUES (...)
-        checkpoint_id, thread_id, step, state = params[0], params[1], params[2], params[3]
-        _test_db["checkpoints"][(thread_id, step)] = state
+        if len(params) >= 4:
+            checkpoint_id, thread_id, step, state = params[0], params[1], params[2], params[3]
+            _test_db["checkpoints"][(thread_id, step)] = state
+    elif "update threads" in query_lower:
+        # UPDATE threads SET updated_at = NOW() WHERE thread_id = %s
+        if len(params) >= 1 and params[0] in _test_db["threads"]:
+            _test_db["threads"][params[0]]["updated_at"] = datetime.now()
 
 
 async def _mock_execute(query, params=()):
     """Simulate SELECT operations."""
+    from datetime import datetime
     query_lower = query.lower()
 
-    if "threads" in query_lower and "select" in query_lower:
-        # SELECT * FROM threads WHERE thread_id = %s
-        thread_id = params[0]
-        if thread_id in _test_db["threads"]:
-            thread = _test_db["threads"][thread_id]
-            return [(thread["id"], thread["user_id"], thread["metadata"])]
+    if "from threads" in query_lower and "select" in query_lower:
+        # SELECT thread_id, user_id, created_at, updated_at, metadata FROM threads WHERE thread_id = %s
+        if len(params) > 0:
+            thread_id = params[0]
+            if thread_id in _test_db["threads"]:
+                t = _test_db["threads"][thread_id]
+                return [(t["id"], t["user_id"], t["created_at"], t["updated_at"], t["metadata"])]
         return []
-    elif "messages" in query_lower and "select" in query_lower:
-        # SELECT * FROM messages WHERE thread_id = %s
-        thread_id = params[0]
-        if thread_id in _test_db["messages"]:
-            return [(msg["thread_id"], msg["role"], msg["content"], msg["metadata"]) for msg in _test_db["messages"][thread_id]]
+    elif "from messages" in query_lower and "select" in query_lower:
+        # SELECT message_id, role, content, metadata, created_at FROM messages WHERE thread_id = %s ORDER BY created_at ASC LIMIT %s
+        if len(params) > 0:
+            thread_id = params[0]
+            if thread_id in _test_db["messages"]:
+                messages = _test_db["messages"][thread_id]
+                limit = params[1] if len(params) > 1 else 50
+                return [(msg["message_id"], msg["role"], msg["content"], msg["metadata"], msg["created_at"]) for msg in messages[:limit]]
         return []
-    elif "checkpoints" in query_lower and "select" in query_lower:
+    elif "from checkpoints" in query_lower and "select" in query_lower:
         # SELECT state FROM checkpoints WHERE thread_id = %s AND step = %s
-        thread_id, step = params[0], params[1]
-        if (thread_id, step) in _test_db["checkpoints"]:
-            return [(_test_db["checkpoints"][(thread_id, step)],)]
+        if len(params) >= 2:
+            thread_id, step = params[0], params[1]
+            if (thread_id, step) in _test_db["checkpoints"]:
+                return [(_test_db["checkpoints"][(thread_id, step)],)]
         return []
 
     return []
