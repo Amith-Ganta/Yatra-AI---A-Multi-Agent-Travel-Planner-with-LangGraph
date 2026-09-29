@@ -1,0 +1,48 @@
+# Yatra AI — Phase 2: Config & LLM Factory
+# Pinned versions for reproducibility
+
+# Core framework
+python-dotenv==1.0.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# LLM + LangChain
+langchain==0.1.10
+langchain-core==0.1.20
+langchain-groq==0.1.0
+langchain-openai==0.1.0
+langgraph==0.0.32
+
+# Database (async PostgreSQL)
+sqlalchemy==2.0.23
+sqlalchemy-stubs==0.4
+psycopg==3.1.13
+psycopg-binary==3.1.13
+psycopg-pool==3.1.13
+asyncpg==0.29.0
+
+# FastAPI (Phase 6)
+fastapi==0.104.1
+uvicorn==0.24.0
+python-multipart==0.0.6
+
+# Logging
+python-json-logger==2.0.7
+
+# Type checking
+pydantic-extra-types==2.1.0
+
+# Testing (Phase 7)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Linting
+ruff==0.1.8
+black==23.12.0
+
+# Type checking
+pyright==1.1.338
+
+# Development
+ipython==8.18.1
