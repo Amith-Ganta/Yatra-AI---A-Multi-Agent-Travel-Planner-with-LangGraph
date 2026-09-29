@@ -71,6 +71,7 @@ logs/
 # PostgreSQL
 postgres_data/
 *.sql
+!src/memory/migrations/*.sql
 
 # Secrets & credentials
 *.pem
