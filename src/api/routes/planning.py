@@ -59,7 +59,7 @@ async def plan_trip(request: PlanRequest):
         await add_message(thread_id, "user", request.message)
 
         # Build graph
-        graph = await build_graph()
+        graph = build_graph()
 
         # Initial state
         initial_state: TravelState = {

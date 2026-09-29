@@ -72,6 +72,12 @@ async def _mock_execute_insert(query, params):
         # UPDATE threads SET updated_at = NOW() WHERE thread_id = %s
         if len(params) >= 1 and params[0] in _test_db["threads"]:
             _test_db["threads"][params[0]]["updated_at"] = datetime.now()
+    elif "delete from threads" in query_lower:
+        # DELETE FROM threads WHERE thread_id = %s
+        if len(params) >= 1 and params[0] in _test_db["threads"]:
+            del _test_db["threads"][params[0]]
+            if params[0] in _test_db["messages"]:
+                del _test_db["messages"][params[0]]
 
 
 async def _mock_execute(query, params=()):
