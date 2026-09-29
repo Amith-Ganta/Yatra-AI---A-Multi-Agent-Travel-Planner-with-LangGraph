@@ -40,3 +40,21 @@ addopts = "--cov=src --cov-report=html --cov-report=term-missing"
 include = ["src", "tests"]
 exclude = [".venv", "build", "dist"]
 typeCheckingMode = "strict"
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/site-packages/*", "*/__pycache__/*"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+]
+precision = 2
+show_missing = true
