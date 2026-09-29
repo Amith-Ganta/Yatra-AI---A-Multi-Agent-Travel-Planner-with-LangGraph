@@ -12,16 +12,15 @@ from .errors import ConfigError, MissingAPIKeyError
 class ModelEnum(str, Enum):
     """Allowed LLM models (STRICT policy)."""
 
-    GROQ_DEEPSEEK = "deepseek:deepseek-chat"
+    GROQ_MIXTRAL = "groq:mixtral-8x7b-32768"
     OPENAI_GPT4O_MINI = "openai:gpt-4o-mini"
-    OPENAI_GPT4_1_MINI = "openai:gpt-4.1-mini"
 
 
 class LLMConfig(BaseSettings):
     """LLM configuration."""
 
     runtime_model: ModelEnum = Field(
-        default=ModelEnum.GROQ_DEEPSEEK,
+        default=ModelEnum.GROQ_MIXTRAL,
         alias="llm_runtime_model",
         description="Primary LLM for agent runtime",
     )
@@ -52,7 +51,7 @@ class LLMConfig(BaseSettings):
         if isinstance(v, str):
             if v.startswith("claude-") or v.startswith("gpt-4") or v.startswith("gpt-5"):
                 raise ConfigError(f"Forbidden model: {v}")
-            if v in ["deepseek:deepseek-chat", "openai:gpt-4o-mini", "openai:gpt-4.1-mini"]:
+            if v in ["groq:mixtral-8x7b-32768", "openai:gpt-4o-mini"]:
                 return ModelEnum(v)
             raise ConfigError(f"Unknown model: {v}")
         return v
@@ -68,8 +67,8 @@ class LLMConfig(BaseSettings):
     @classmethod
     def validate_groq_key(cls, v, info):
         runtime_model = info.data.get("runtime_model")
-        if runtime_model == ModelEnum.GROQ_DEEPSEEK and not v:
-            raise MissingAPIKeyError("GROQ_API_KEY is required when using deepseek model")
+        if runtime_model == ModelEnum.GROQ_MIXTRAL and not v:
+            raise MissingAPIKeyError("GROQ_API_KEY is required when using Groq models")
         return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}

@@ -46,7 +46,7 @@ def test_get_llm_missing_groq_key(llm_config):
     factory = LLMFactory(llm_config)
 
     with pytest.raises(ConfigError, match="GROQ_API_KEY"):
-        factory.get_llm(ModelEnum.GROQ_DEEPSEEK)
+        factory.get_llm(ModelEnum.GROQ_MIXTRAL)
 
 
 def test_get_eval_judge(factory):

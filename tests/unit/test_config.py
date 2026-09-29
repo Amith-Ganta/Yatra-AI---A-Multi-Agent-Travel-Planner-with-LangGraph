@@ -15,7 +15,7 @@ def test_settings_load_from_env(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://localhost:5432/yatra")
 
     settings = Settings()
-    assert settings.llm.runtime_model == ModelEnum.GROQ_DEEPSEEK
+    assert settings.llm.runtime_model == ModelEnum.GROQ_MIXTRAL
     assert settings.llm.openai_api_key == "sk-proj-test_key"
     assert settings.database.url.startswith("postgresql://")
 
