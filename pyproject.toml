@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yatra-ai"
+version = "1.0.0"
+description = "Production-grade multi-agent travel planner with LangGraph"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Amith Ganta", email = "gantaamith007@gmail.com"}
+]
+
+[project.urls]
+Repository = "https://github.com/Amith-Ganta/Yatra-AI---A-Multi-Agent-Travel-Planner-with-LangGraph"
+Documentation = "https://github.com/Amith-Ganta/Yatra-AI---A-Multi-Agent-Travel-Planner-with-LangGraph/blob/main/README.md"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=src --cov-report=html --cov-report=term-missing"
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = [".venv", "build", "dist"]
+typeCheckingMode = "strict"
