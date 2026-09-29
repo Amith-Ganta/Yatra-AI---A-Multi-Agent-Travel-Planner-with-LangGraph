@@ -199,27 +199,24 @@ class TestEvalGate:
             "src.evals.gate.judge_factuality"
         ) as mock_factuality, patch("src.evals.gate.judge_budget") as mock_budget:
 
-            mock_safety.return_value = AsyncMock(score=0.98, is_safe=True)()
-            mock_factuality.return_value = AsyncMock(score=0.92, is_factual=True)()
-            mock_budget.return_value = AsyncMock(
-                score=0.9, within_budget=True, estimated_cost=1800
-            )()
-
-            # Mock the functions to return MagicMock with awaitable
+            # Mock the functions to return proper result objects
             async def mock_safety_judge(*args, **kwargs):
-                return AsyncMock(score=0.98, is_safe=True, reasons=[], harmful_content=[])()
+                from src.evals.judges.safety import SafetyResult
+                return SafetyResult(score=0.98, is_safe=True, reasons=[], harmful_content=[])
 
             async def mock_factuality_judge(*args, **kwargs):
-                return AsyncMock(score=0.92, is_factual=True, errors=[], confidence="high")()
+                from src.evals.judges.factuality import FactualityResult
+                return FactualityResult(score=0.92, is_factual=True, errors=[], confidence="high")
 
             async def mock_budget_judge(*args, **kwargs):
-                return AsyncMock(
+                from src.evals.judges.budget import BudgetResult
+                return BudgetResult(
                     score=0.9,
                     within_budget=True,
                     estimated_cost=1800,
                     breakdown={},
                     variance=-10.0,
-                )()
+                )
 
             mock_safety.side_effect = mock_safety_judge
             mock_factuality.side_effect = mock_factuality_judge

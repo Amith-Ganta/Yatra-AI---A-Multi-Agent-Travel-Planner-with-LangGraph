@@ -103,11 +103,28 @@ async def _mock_execute(query, params=()):
                 return [(msg["message_id"], msg["role"], msg["content"], msg["metadata"], msg["created_at"]) for msg in messages[:limit]]
         return []
     elif "from checkpoints" in query_lower and "select" in query_lower:
-        # SELECT state FROM checkpoints WHERE thread_id = %s AND step = %s
-        if len(params) >= 2:
-            thread_id, step = params[0], params[1]
-            if (thread_id, step) in _test_db["checkpoints"]:
-                return [(_test_db["checkpoints"][(thread_id, step)],)]
+        if "checkpoint_id, step, created_at" in query_lower:
+            # SELECT checkpoint_id, step, created_at FROM checkpoints WHERE thread_id = %s ORDER BY step DESC
+            thread_id = params[0]
+            result = []
+            for (tid, step), state in _test_db["checkpoints"].items():
+                if tid == thread_id:
+                    # Generate a checkpoint_id based on the state content (deterministic)
+                    checkpoint_id = hash(state) % (10**10)
+                    result.append((str(checkpoint_id), step, datetime.now()))
+            return sorted(result, key=lambda x: x[1], reverse=True)
+        elif "and step" in query_lower or ("step = %s" in query_lower or "step=%s" in query_lower):
+            # SELECT state FROM checkpoints WHERE thread_id = %s AND step = %s
+            if len(params) >= 2:
+                thread_id, step = params[0], params[1]
+                if (thread_id, step) in _test_db["checkpoints"]:
+                    return [(_test_db["checkpoints"][(thread_id, step)],)]
+        else:
+            # SELECT state FROM checkpoints WHERE thread_id = %s ORDER BY step DESC LIMIT 1
+            thread_id = params[0]
+            for (tid, step), state in sorted(_test_db["checkpoints"].items(), key=lambda x: x[0][1], reverse=True):
+                if tid == thread_id:
+                    return [(state,)]
         return []
 
     return []
