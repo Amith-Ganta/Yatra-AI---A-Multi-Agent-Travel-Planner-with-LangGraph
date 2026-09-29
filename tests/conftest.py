@@ -5,6 +5,12 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 
 
+# Ensure test environment variables are set before any imports of config
+os.environ.setdefault("OPENAI_API_KEY", "sk-proj-test-key")
+os.environ.setdefault("DEEPSEEK_API_KEY", "sk-test-deepseek")
+os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/test_yatra")
+
+
 @pytest.fixture
 def mock_llm():
     """Mock LLM for deterministic testing."""

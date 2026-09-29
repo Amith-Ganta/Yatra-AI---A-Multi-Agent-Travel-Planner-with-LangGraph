@@ -29,7 +29,8 @@ class LLMConfig(BaseSettings):
         alias="llm_eval_model",
         description="LLM judge for evaluation",
     )
-    openai_api_key: str = Field(
+    openai_api_key: Optional[str] = Field(
+        default=None,
         alias="openai_api_key",
         description="OpenAI API key (required)",
     )
@@ -68,8 +69,6 @@ class LLMConfig(BaseSettings):
         return v
 
     model_config = ConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
     )
@@ -78,7 +77,8 @@ class LLMConfig(BaseSettings):
 class DatabaseConfig(BaseSettings):
     """Database configuration."""
 
-    url: str = Field(
+    url: Optional[str] = Field(
+        default=None,
         alias="database_url",
         description="PostgreSQL connection string",
     )
@@ -96,8 +96,6 @@ class DatabaseConfig(BaseSettings):
         return v
 
     model_config = ConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
     )
@@ -113,8 +111,6 @@ class AppConfig(BaseSettings):
     port: int = Field(default=8000, alias="app_port")
 
     model_config = ConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
     )
@@ -146,8 +142,6 @@ class EvalConfig(BaseSettings):
     )
 
     model_config = ConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore"
     )
