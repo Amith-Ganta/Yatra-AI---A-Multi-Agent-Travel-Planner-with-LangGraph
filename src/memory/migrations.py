@@ -7,7 +7,7 @@ from .db import db_pool
 
 
 async def run_migrations():
-    """Execute all pending migrations."""
+    """Execute all database migrations in order."""
     migrations_dir = Path(__file__).parent / "migrations"
 
     # Get all .sql files sorted by name

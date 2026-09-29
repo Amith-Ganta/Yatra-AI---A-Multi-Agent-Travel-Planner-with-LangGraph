@@ -11,7 +11,7 @@ export default function SearchBar() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <input
           type="text"
-          placeholder="Where do you want to go?"
+          aria-label="Destination"
           value={destination}
           onChange={(e) => setDestination(e.target.value)}
           className="px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue"

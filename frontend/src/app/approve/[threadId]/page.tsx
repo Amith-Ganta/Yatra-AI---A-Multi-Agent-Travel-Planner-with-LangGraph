@@ -90,7 +90,6 @@ export default function ApprovePage() {
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Any changes or special requests?"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue h-24 resize-none"
               />
             </div>
