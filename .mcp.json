@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "tavily": {
+      "command": "python",
+      "args": ["-m", "mcp.tavily"],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      }
+    },
+    "aviationstack": {
+      "command": "python",
+      "args": ["-m", "mcp.aviation"],
+      "env": {
+        "AVIATIONSTACK_API_KEY": "${AVIATIONSTACK_API_KEY}"
+      }
+    },
+    "openmeteo": {
+      "command": "python",
+      "args": ["-m", "mcp.weather"],
+      "env": {}
+    }
+  }
+}
