@@ -42,7 +42,13 @@ export function useTripPlanner(): UseTripPlannerReturn {
       // Note: Full plan structure would be populated by SSE events
       setTripPlan({
         thread_id: id,
-        trip_constraints: {},
+        trip_constraints: {
+          destination: '',
+          departure_date: '',
+          return_date: '',
+          party_size: 0,
+          budget: 0,
+        },
         flights: [],
         hotels: [],
         weather: [],
@@ -50,7 +56,7 @@ export function useTripPlanner(): UseTripPlannerReturn {
         itinerary: [],
         total_cost: 0,
         feasibility: true,
-      } as TripPlan);
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to fetch plan';
       setError(msg);
