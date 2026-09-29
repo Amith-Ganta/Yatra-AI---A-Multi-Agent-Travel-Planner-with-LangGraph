@@ -80,3 +80,25 @@ def test_eval_config_thresholds(monkeypatch):
 
     settings = Settings()
     assert settings.eval.safety_threshold == 0.99
+
+
+def test_deepseek_model_support(monkeypatch):
+    """DeepSeek model is supported."""
+    monkeypatch.setenv("LLM_RUNTIME_MODEL", "deepseek:deepseek-chat")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-test")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test-deepseek")
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost:5432/yatra")
+
+    settings = Settings()
+    assert settings.llm.runtime_model == ModelEnum.DEEPSEEK_CHAT
+
+
+def test_deepseek_missing_key(monkeypatch):
+    """Missing DEEPSEEK_API_KEY when using DeepSeek raises MissingAPIKeyError."""
+    monkeypatch.setenv("LLM_RUNTIME_MODEL", "deepseek:deepseek-chat")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-test")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "postgresql://localhost:5432/yatra")
+
+    with pytest.raises(MissingAPIKeyError, match="DEEPSEEK_API_KEY"):
+        Settings()

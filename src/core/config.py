@@ -12,6 +12,7 @@ from .errors import ConfigError, MissingAPIKeyError
 class ModelEnum(str, Enum):
     """Allowed LLM models (STRICT policy)."""
 
+    DEEPSEEK_CHAT = "deepseek:deepseek-chat"
     GROQ_MIXTRAL = "groq:mixtral-8x7b-32768"
     OPENAI_GPT4O_MINI = "openai:gpt-4o-mini"
 
@@ -51,7 +52,7 @@ class LLMConfig(BaseSettings):
         if isinstance(v, str):
             if v.startswith("claude-") or v.startswith("gpt-4") or v.startswith("gpt-5"):
                 raise ConfigError(f"Forbidden model: {v}")
-            if v in ["groq:mixtral-8x7b-32768", "openai:gpt-4o-mini"]:
+            if v in ["deepseek:deepseek-chat", "groq:mixtral-8x7b-32768", "openai:gpt-4o-mini"]:
                 return ModelEnum(v)
             raise ConfigError(f"Unknown model: {v}")
         return v
@@ -69,6 +70,14 @@ class LLMConfig(BaseSettings):
         runtime_model = info.data.get("runtime_model")
         if runtime_model == ModelEnum.GROQ_MIXTRAL and not v:
             raise MissingAPIKeyError("GROQ_API_KEY is required when using Groq models")
+        return v
+
+    @field_validator("deepseek_api_key", mode="before")
+    @classmethod
+    def validate_deepseek_key(cls, v, info):
+        runtime_model = info.data.get("runtime_model")
+        if runtime_model == ModelEnum.DEEPSEEK_CHAT and not v:
+            raise MissingAPIKeyError("DEEPSEEK_API_KEY is required when using DeepSeek models")
         return v
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "case_sensitive": False}

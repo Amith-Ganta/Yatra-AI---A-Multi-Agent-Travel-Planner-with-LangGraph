@@ -25,7 +25,17 @@ class LLMFactory:
             return self._cache[model_id]
 
         try:
-            if model_id == ModelEnum.GROQ_MIXTRAL:
+            if model_id == ModelEnum.DEEPSEEK_CHAT:
+                if not self.config.deepseek_api_key:
+                    raise ConfigError("DEEPSEEK_API_KEY required for DeepSeek model")
+                llm = ChatOpenAI(
+                    model_name="deepseek-chat",
+                    base_url="https://api.deepseek.com/v1",
+                    api_key=self.config.deepseek_api_key,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                )
+            elif model_id == ModelEnum.GROQ_MIXTRAL:
                 if not self.config.groq_api_key:
                     raise ConfigError("GROQ_API_KEY required for Groq model")
                 llm = ChatGroq(

@@ -16,6 +16,7 @@ def llm_config():
         eval_model=ModelEnum.OPENAI_GPT4O_MINI,
         groq_api_key="gsk_test",
         openai_api_key="sk-proj-test",
+        deepseek_api_key="sk-test-deepseek",
     )
 
 
@@ -63,3 +64,29 @@ def test_get_eval_judge_model(factory):
         mock_openai.assert_called_once()
         call_kwargs = mock_openai.call_args[1]
         assert call_kwargs["model_name"] == "gpt-4o-mini"
+
+
+def test_get_llm_deepseek(factory):
+    """Get DeepSeek LLM instance."""
+    with patch("src.core.llm.ChatOpenAI"):
+        llm = factory.get_llm(ModelEnum.DEEPSEEK_CHAT)
+        assert llm is not None
+
+
+def test_get_llm_deepseek_config(factory):
+    """DeepSeek LLM uses correct base_url and model."""
+    with patch("src.core.llm.ChatOpenAI") as mock_openai:
+        factory.get_llm(ModelEnum.DEEPSEEK_CHAT)
+        mock_openai.assert_called_once()
+        call_kwargs = mock_openai.call_args[1]
+        assert call_kwargs["model_name"] == "deepseek-chat"
+        assert call_kwargs["base_url"] == "https://api.deepseek.com/v1"
+
+
+def test_get_llm_missing_deepseek_key(llm_config):
+    """Missing DEEPSEEK_API_KEY raises ConfigError."""
+    llm_config.deepseek_api_key = None
+    factory = LLMFactory(llm_config)
+
+    with pytest.raises(ConfigError, match="DEEPSEEK_API_KEY"):
+        factory.get_llm(ModelEnum.DEEPSEEK_CHAT)
