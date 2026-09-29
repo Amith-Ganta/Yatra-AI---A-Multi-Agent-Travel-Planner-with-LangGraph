@@ -12,33 +12,33 @@ echo "════════════════════════�
 # 1. Docker build
 echo "[1/7] Docker build..."
 if command -v docker >/dev/null 2>&1; then
-  docker-compose build || FAIL "docker-compose build failed"
+  docker compose build || FAIL "docker compose build failed"
 else
   FAIL "Docker unavailable — required for verification"
 fi
 
 # 2. Docker up
 echo "[2/7] Starting containers..."
-docker-compose up -d || FAIL "docker-compose up failed"
+docker compose up -d || FAIL "docker compose up failed"
 sleep 20
 
 # 3. Health check
 echo "[3/7] Health check..."
 curl -fsS http://localhost:8000/health || {
-  docker-compose logs --tail=100
+  docker compose logs --tail=100
   FAIL "/health did not return 200"
 }
 
 # 4. Readiness check
 echo "[4/7] Readiness check..."
 curl -fsS http://localhost:8000/ready || {
-  docker-compose logs --tail=100
+  docker compose logs --tail=100
   FAIL "/ready did not return 200"
 }
 
 # 5. Docker down
 echo "[5/7] Shutting down containers..."
-docker-compose down >/dev/null 2>&1 || FAIL "docker-compose down failed"
+docker compose down >/dev/null 2>&1 || FAIL "docker compose down failed"
 
 # 6. Unit tests
 echo "[6/7] Running unit tests..."
