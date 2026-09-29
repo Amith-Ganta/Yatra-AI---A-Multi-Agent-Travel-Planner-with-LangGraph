@@ -12,9 +12,8 @@ from src.core.errors import ConfigError, LLMError
 def llm_config():
     """LLM config for testing."""
     return LLMConfig(
-        runtime_model=ModelEnum.OPENAI_GPT4O_MINI,
+        runtime_model=ModelEnum.DEEPSEEK_CHAT,
         eval_model=ModelEnum.OPENAI_GPT4O_MINI,
-        groq_api_key="gsk_test",
         openai_api_key="sk-proj-test",
         deepseek_api_key="sk-test-deepseek",
     )
@@ -41,13 +40,6 @@ def test_get_llm_caching(factory):
         assert llm1 is llm2  # Same cached instance
 
 
-def test_get_llm_missing_groq_key(llm_config):
-    """Missing GROQ_API_KEY raises ConfigError."""
-    llm_config.groq_api_key = None
-    factory = LLMFactory(llm_config)
-
-    with pytest.raises(ConfigError, match="GROQ_API_KEY"):
-        factory.get_llm(ModelEnum.GROQ_MIXTRAL)
 
 
 def test_get_eval_judge(factory):

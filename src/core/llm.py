@@ -3,7 +3,6 @@
 from typing import Dict, Optional
 
 from langchain_core.language_models import BaseChatModel
-from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 
 from .config import LLMConfig, ModelEnum, settings
@@ -32,15 +31,6 @@ class LLMFactory:
                     model_name="deepseek-chat",
                     base_url="https://api.deepseek.com/v1",
                     api_key=self.config.deepseek_api_key,
-                    temperature=self.config.temperature,
-                    max_tokens=self.config.max_tokens,
-                )
-            elif model_id == ModelEnum.GROQ_MIXTRAL:
-                if not self.config.groq_api_key:
-                    raise ConfigError("GROQ_API_KEY required for Groq model")
-                llm = ChatGroq(
-                    model_name="mixtral-8x7b-32768",
-                    api_key=self.config.groq_api_key,
                     temperature=self.config.temperature,
                     max_tokens=self.config.max_tokens,
                 )
