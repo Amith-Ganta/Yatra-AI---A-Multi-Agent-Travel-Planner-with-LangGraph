@@ -89,7 +89,7 @@ async def final_response_agent(state: TravelState) -> dict:
     }
 
 
-def build_graph():
+async def build_graph():
     """Build the complete LangGraph StateGraph."""
     graph = StateGraph(TravelState)
 
