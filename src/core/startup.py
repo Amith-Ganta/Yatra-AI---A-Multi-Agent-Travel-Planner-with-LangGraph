@@ -15,9 +15,14 @@ async def init_app():
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-    # Initialize database pool
+    # Initialize database pool (with timeout)
     db_pool.database_url = settings.database.url
-    await db_pool.init()
+    try:
+        await asyncio.wait_for(db_pool.init(), timeout=10.0)
+    except asyncio.TimeoutError:
+        logger.warning("Database pool initialization timed out (app will continue without db)", extra={"component": "startup"})
+    except Exception as e:
+        logger.warning(f"Database initialization failed (app will continue): {e}", extra={"component": "startup"})
 
     # Run migrations (non-blocking on failure)
     try:
