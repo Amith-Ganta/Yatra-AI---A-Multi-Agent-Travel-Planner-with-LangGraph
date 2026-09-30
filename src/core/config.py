@@ -56,16 +56,13 @@ class LLMConfig(BaseSettings):
     @field_validator("openai_api_key", mode="before")
     @classmethod
     def validate_openai_key(cls, v):
-        if not v:
-            raise MissingAPIKeyError("OPENAI_API_KEY is required")
+        # Optional at startup; fail when actually used by eval model
         return v
 
     @field_validator("deepseek_api_key", mode="before")
     @classmethod
     def validate_deepseek_key(cls, v, info):
-        runtime_model = info.data.get("runtime_model")
-        if runtime_model == ModelEnum.DEEPSEEK_CHAT and not v:
-            raise MissingAPIKeyError("DEEPSEEK_API_KEY is required when using DeepSeek models")
+        # Optional at startup; fail when actually used by runtime model
         return v
 
     model_config = ConfigDict(
