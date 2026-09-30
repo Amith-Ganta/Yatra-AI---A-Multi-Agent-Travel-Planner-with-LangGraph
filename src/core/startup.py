@@ -19,8 +19,11 @@ async def init_app():
     db_pool.database_url = settings.database.url
     await db_pool.init()
 
-    # Run migrations
-    await run_migrations()
+    # Run migrations (non-blocking on failure)
+    try:
+        await run_migrations()
+    except Exception as e:
+        logger.warning(f"Migration failed (app will continue): {e}", extra={"component": "startup"})
 
     logger.info("Application initialized", extra={"component": "startup"})
 
