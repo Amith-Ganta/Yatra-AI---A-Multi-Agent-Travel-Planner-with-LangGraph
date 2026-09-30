@@ -54,5 +54,6 @@ jobs:
       - name: Tier 3 — Frontend build
         run: |
           cd frontend
-          npm install --silent
+          rm -rf .next node_modules package-lock.json
+          npm install
           npm run build
