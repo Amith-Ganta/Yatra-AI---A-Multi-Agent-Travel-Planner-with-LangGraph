@@ -114,6 +114,9 @@ Desktop.ini
 node_modules/
 npm-debug.log
 yarn-error.log
+.next/
+.vercel/
+out/
 
 # Jupyter
 .ipynb_checkpoints/
