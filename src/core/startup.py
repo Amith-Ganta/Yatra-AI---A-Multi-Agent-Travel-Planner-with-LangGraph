@@ -10,27 +10,15 @@ from src.core.telemetry import logger
 
 
 async def init_app():
-    """Initialize application on startup."""
+    """Initialize application on startup (minimal, lazy initialization)."""
     # Set Windows event loop policy
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-    # Initialize database pool (with timeout)
+    # Only set database URL; actual initialization is lazy
     db_pool.database_url = settings.database.url
-    try:
-        await asyncio.wait_for(db_pool.init(), timeout=10.0)
-    except asyncio.TimeoutError:
-        logger.warning("Database pool initialization timed out (app will continue without db)", extra={"component": "startup"})
-    except Exception as e:
-        logger.warning(f"Database initialization failed (app will continue): {e}", extra={"component": "startup"})
 
-    # Run migrations (non-blocking on failure)
-    try:
-        await run_migrations()
-    except Exception as e:
-        logger.warning(f"Migration failed (app will continue): {e}", extra={"component": "startup"})
-
-    logger.info("Application initialized", extra={"component": "startup"})
+    logger.info("Application initialized (database initialization deferred)", extra={"component": "startup"})
 
 
 async def close_app():
