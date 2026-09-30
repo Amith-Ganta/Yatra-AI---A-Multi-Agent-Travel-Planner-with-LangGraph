@@ -30,13 +30,14 @@ def test_settings_model_validation_forbidden(monkeypatch):
 
 
 def test_settings_missing_openai_key(monkeypatch):
-    """Missing OPENAI_API_KEY raises MissingAPIKeyError."""
+    """Missing OPENAI_API_KEY at startup is allowed (lazy validation)."""
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
     monkeypatch.setenv("DATABASE_URL", "postgresql://localhost:5432/yatra")
 
-    with pytest.raises(MissingAPIKeyError):
-        Settings()
+    # Should not raise during initialization; error happens when key is actually used
+    settings = Settings()
+    assert settings.llm.openai_api_key is None
 
 
 def test_settings_missing_database_url(monkeypatch):
@@ -93,11 +94,12 @@ def test_deepseek_model_support(monkeypatch):
 
 
 def test_deepseek_missing_key(monkeypatch):
-    """Missing DEEPSEEK_API_KEY when using DeepSeek raises MissingAPIKeyError."""
+    """Missing DEEPSEEK_API_KEY at startup is allowed (lazy validation)."""
     monkeypatch.setenv("LLM_RUNTIME_MODEL", "deepseek:deepseek-chat")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-test")
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     monkeypatch.setenv("DATABASE_URL", "postgresql://localhost:5432/yatra")
 
-    with pytest.raises(MissingAPIKeyError, match="DEEPSEEK_API_KEY"):
-        Settings()
+    # Should not raise during initialization; error happens when key is actually used
+    settings = Settings()
+    assert settings.llm.deepseek_api_key is None
