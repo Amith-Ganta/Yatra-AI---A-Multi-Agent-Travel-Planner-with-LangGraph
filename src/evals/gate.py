@@ -1,12 +1,11 @@
 """Evaluation gate that combines all judges."""
 
-import json
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from src.core.config import settings
 from src.core.telemetry import logger
-from src.evals.judges import judge_safety, judge_factuality, judge_budget
+from src.evals.judges import judge_budget, judge_factuality, judge_safety
 
 
 @dataclass
@@ -14,12 +13,12 @@ class EvalVerdict:
     """Evaluation verdict combining all judge results."""
 
     passed: bool
-    scores: dict = field(default_factory=dict)
-    failures: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+    scores: dict[str, float] = field(default_factory=dict[str, float])
+    failures: list[str] = field(default_factory=list[str])
+    warnings: list[str] = field(default_factory=list[str])
 
 
-async def run_eval_gate(response: str, context: Optional[dict] = None) -> EvalVerdict:
+async def run_eval_gate(response: str, context: Optional[dict[str, Any]] = None) -> EvalVerdict:
     """Run all evaluation judges and return pass/fail verdict.
 
     Context dict should include:
@@ -28,9 +27,9 @@ async def run_eval_gate(response: str, context: Optional[dict] = None) -> EvalVe
     """
 
     context = context or {}
-    scores = {}
-    failures = []
-    warnings = []
+    scores: dict[str, float] = {}
+    failures: list[str] = []
+    warnings: list[str] = []
 
     logger.info("Running evaluation gate", extra={"response_length": len(response)})
 
@@ -62,7 +61,9 @@ async def run_eval_gate(response: str, context: Optional[dict] = None) -> EvalVe
             )
             if factuality_result.errors:
                 for error in factuality_result.errors:
-                    warnings.append(f"Factuality issue: {error.get('claim')} - {error.get('issue')}")
+                    warnings.append(
+                        f"Factuality issue: {error.get('claim')} - {error.get('issue')}"
+                    )
         else:
             logger.info("Factuality check passed", extra={"score": factuality_result.score})
 

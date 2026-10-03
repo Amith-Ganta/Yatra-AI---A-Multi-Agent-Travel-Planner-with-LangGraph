@@ -1,4 +1,4 @@
--- Migration 001: Initial schema for memory and checkpointing
+-- Migration 001: Initial schema for threads and message history
 
 -- Threads (conversation sessions)
 CREATE TABLE IF NOT EXISTS threads (
@@ -12,17 +12,8 @@ CREATE TABLE IF NOT EXISTS threads (
 CREATE INDEX IF NOT EXISTS idx_user_id ON threads(user_id);
 CREATE INDEX IF NOT EXISTS idx_created_at ON threads(created_at);
 
--- Checkpoints (LangGraph state snapshots)
-CREATE TABLE IF NOT EXISTS checkpoints (
-    checkpoint_id UUID PRIMARY KEY,
-    thread_id UUID NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
-    step INTEGER NOT NULL,
-    state JSONB NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(thread_id, step)
-);
-
-CREATE INDEX IF NOT EXISTS idx_thread_id_step ON checkpoints(thread_id, step);
+-- LangGraph checkpoints are not created here: the saver (AsyncPostgresSaver.setup) owns those
+-- tables. See migration 002 for the legacy table this file used to create.
 
 -- Messages (conversation history)
 CREATE TABLE IF NOT EXISTS messages (
@@ -35,10 +26,3 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_thread_id_created_at ON messages(thread_id, created_at);
-
--- Checkpointer config (versioning)
-CREATE TABLE IF NOT EXISTS checkpointer_config (
-    id SERIAL PRIMARY KEY,
-    version VARCHAR(20) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);

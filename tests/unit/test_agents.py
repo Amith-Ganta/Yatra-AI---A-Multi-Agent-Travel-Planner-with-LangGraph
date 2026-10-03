@@ -1,11 +1,12 @@
 """Tests for agents and LangGraph."""
 
-import pytest
 from datetime import datetime
 
-from src.agents.state import TravelState
-from src.agents.routing import get_agent_sequence, should_run_agent
+import pytest
+
 from src.agents.graph import build_graph
+from src.agents.routing import get_agent_sequence, should_run_agent
+from src.agents.state import TravelState
 
 
 def test_travel_state_creation():
@@ -22,18 +23,18 @@ def test_travel_state_creation():
 
 def test_should_run_agent_always_runs():
     """Itinerary and approval agents always run."""
-    assert should_run_agent("itinerary", []) == True
-    assert should_run_agent("human_approval", []) == True
-    assert should_run_agent("final_response", []) == True
+    assert should_run_agent("itinerary", [])
+    assert should_run_agent("human_approval", [])
+    assert should_run_agent("final_response", [])
 
 
 def test_should_run_agent_conditional():
     """Conditional agents only run if selected."""
     selected = ["flight", "hotel"]
-    assert should_run_agent("flight", selected) == True
-    assert should_run_agent("hotel", selected) == True
-    assert should_run_agent("weather", selected) == False
-    assert should_run_agent("budget", selected) == False
+    assert should_run_agent("flight", selected)
+    assert should_run_agent("hotel", selected)
+    assert not should_run_agent("weather", selected)
+    assert not should_run_agent("budget", selected)
 
 
 def test_get_agent_sequence():

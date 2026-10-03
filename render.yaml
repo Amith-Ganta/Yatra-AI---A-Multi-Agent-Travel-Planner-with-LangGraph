@@ -1,0 +1,82 @@
+# Render Blueprint for Yatra AI: PostgreSQL + API (Docker) + frontend (Node).
+# Render reads this file when you create a Blueprint from the repository.
+# Step-by-step guide, free-tier limits and the order of operations: DEPLOYMENT.md, section 5.
+#
+# Free-tier facts to know before you click Apply:
+#   - the free web services sleep after 15 minutes without traffic and need about a minute to wake up
+#   - the free PostgreSQL database expires 30 days after creation (upgrade it or recreate it)
+#   - a workspace can have only one free PostgreSQL database
+# Change `plan: free` to a paid plan on all three resources for a deployment that stays awake.
+
+databases:
+  - name: yatra-ai-db
+    plan: free
+    region: frankfurt
+    databaseName: yatra
+    user: yatra
+
+services:
+  # ── API: FastAPI + LangGraph, built from the Dockerfile ──────────────────────────────────
+  - type: web
+    name: yatra-ai-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: frankfurt
+    # /ready answers 503 until PostgreSQL responds, so no traffic arrives before the API works
+    healthCheckPath: /ready
+    autoDeployTrigger: commit
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: yatra-ai-db
+          property: connectionString
+      - key: DEEPSEEK_API_KEY
+        sync: false # asked for when the Blueprint is created
+      # The fallback: when DeepSeek fails (rate limit, outage, timeout) the request is retried on
+      # OpenAI gpt-4.1-mini, then once more on DeepSeek. Without this key there is no fallback.
+      - key: OPENAI_API_KEY
+        sync: false # asked for when the Blueprint is created
+      # Model chain. These are the defaults, written out so they can be changed in the dashboard
+      # without a code change. A model whose API key is missing is skipped.
+      - key: LLM_RUNTIME_MODEL
+        value: deepseek:deepseek-flash
+      - key: LLM_FALLBACK_MODELS
+        value: openai:gpt-4.1-mini,deepseek:deepseek-flash
+      # TAVILY_API_KEY (hotel search) is optional and is not listed here, because Render asks for a
+      # value for every variable in this file. Add it later in the dashboard if you have a key.
+      # Without it the hotels MCP server is not started, which also saves its memory.
+      #
+      # The flight, hotel and weather tools run as MCP server subprocesses of the API, so one web
+      # service holds the API plus up to three small Python processes. That is roughly 290 MB by
+      # estimate on the 512 MB free tier. If the service restarts for lack of memory, set
+      # MCP_ENABLED to false: the same tools then run inside the API process.
+      - key: MCP_ENABLED
+        value: "true"
+      - key: CORS_ORIGINS
+        sync: false # the exact frontend origin, for example https://yatra-ai-web.onrender.com
+      - key: APP_DEBUG
+        value: "false" # true turns on uvicorn auto-reload
+      - key: APP_ENV
+        value: production
+      # PORT is injected by Render and read by the API. Do not set APP_PORT: it would win over PORT.
+
+  # ── Frontend: Next.js 15 ─────────────────────────────────────────────────────────────────
+  # The pages are rendered by a Node server (dynamic routes), so this is a web service,
+  # not a static site. It can instead be hosted on Vercel; then delete this service.
+  - type: web
+    name: yatra-ai-web
+    runtime: node
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    plan: free
+    region: frankfurt
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22.23.2 # the version the production build was tested with
+      - key: NEXT_PUBLIC_API_URL
+        sync: false # public URL of the API, no trailing slash. It is baked in at build time.

@@ -1,16 +1,15 @@
 """FastAPI application factory."""
 
-import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 from src.core.config import settings
-from src.core.startup import init_app, close_app
+from src.core.startup import close_app, init_app
 from src.core.telemetry import logger
 
 
@@ -33,17 +32,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS middleware
+    # CORS: only the configured frontend origins. The API sets no cookies and the frontend sends
+    # no credentials, so they stay off (credentials plus a wildcard origin is the unsafe pair).
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=settings.app.cors_origin_list,
+        allow_origin_regex=settings.app.cors_origin_regex,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+        allow_headers=["Content-Type"],
     )
 
     # Routes
-    from src.api.routes import health_router, planning_router, approval_router
+    from src.api.routes import approval_router, health_router, planning_router
 
     app.include_router(health_router)
     app.include_router(planning_router)
@@ -54,14 +55,16 @@ def create_app() -> FastAPI:
     frontend_public_path = Path(__file__).parent.parent.parent / "frontend" / "public"
 
     if frontend_build_path.exists():
-        app.mount("/_next/static", StaticFiles(directory=frontend_build_path), name="frontend_static")
+        app.mount(
+            "/_next/static", StaticFiles(directory=frontend_build_path), name="frontend_static"
+        )
 
     if frontend_public_path.exists():
         app.mount("/public", StaticFiles(directory=frontend_public_path), name="frontend_public")
 
     # Global exception handler
     @app.exception_handler(Exception)
-    async def global_exception_handler(request, exc):
+    async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         logger.error("Unhandled exception", extra={"error": str(exc)})
         return JSONResponse(
             status_code=500,

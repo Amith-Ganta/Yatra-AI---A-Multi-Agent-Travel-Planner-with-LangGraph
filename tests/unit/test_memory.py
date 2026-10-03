@@ -1,15 +1,13 @@
 """Tests for memory module (PostgreSQL and checkpointing)."""
 
 import pytest
-from datetime import datetime
-from uuid import UUID
 
 from src.memory import (
-    create_thread,
-    get_thread,
     add_message,
-    get_history,
+    create_thread,
     delete_thread,
+    get_history,
+    get_thread,
 )
 
 
@@ -110,7 +108,7 @@ async def test_add_message_with_metadata():
     thread_id = await create_thread("user-metadata")
     metadata = {"source": "api", "version": "1.0"}
 
-    msg_id = await add_message(thread_id, "user", "Test", metadata)
+    await add_message(thread_id, "user", "Test", metadata)
 
     history = await get_history(thread_id)
     assert len(history) == 1

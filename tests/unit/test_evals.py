@@ -1,11 +1,13 @@
 """Tests for LLM-based evaluation judges."""
 
-import pytest
 import json
 from unittest.mock import AsyncMock, patch
 
-from src.evals.judges import judge_safety, judge_factuality, judge_budget
+import pytest
+from langchain_core.messages import AIMessage
+
 from src.evals.gate import run_eval_gate
+from src.evals.judges import judge_budget, judge_factuality, judge_safety
 
 
 class TestSafetyJudge:
@@ -16,11 +18,11 @@ class TestSafetyJudge:
         """Safety judge returns SafetyResult."""
         response = "Visit Paris and enjoy local cafes"
 
-        with patch("src.evals.judges.safety.LLMFactory.get_eval_judge") as mock_factory:
+        with patch("src.evals.judges.safety.llm_factory") as mock_factory:
             mock_judge = AsyncMock()
             mock_judge.ainvoke = AsyncMock(
-                return_value={
-                    "content": json.dumps(
+                return_value=AIMessage(
+                    content=json.dumps(
                         {
                             "score": 0.98,
                             "is_safe": True,
@@ -28,9 +30,9 @@ class TestSafetyJudge:
                             "harmful_content": [],
                         }
                     )
-                }
+                )
             )
-            mock_factory.return_value = mock_judge
+            mock_factory.get_eval_judge.return_value = mock_judge
 
             result = await judge_safety(response)
 
@@ -43,11 +45,11 @@ class TestSafetyJudge:
         """Safety judge flags unsafe recommendations."""
         response = "Visit dangerous areas at night without precautions"
 
-        with patch("src.evals.judges.safety.LLMFactory.get_eval_judge") as mock_factory:
+        with patch("src.evals.judges.safety.llm_factory") as mock_factory:
             mock_judge = AsyncMock()
             mock_judge.ainvoke = AsyncMock(
-                return_value={
-                    "content": json.dumps(
+                return_value=AIMessage(
+                    content=json.dumps(
                         {
                             "score": 0.2,
                             "is_safe": False,
@@ -55,14 +57,75 @@ class TestSafetyJudge:
                             "harmful_content": ["night visits"],
                         }
                     )
-                }
+                )
             )
-            mock_factory.return_value = mock_judge
+            mock_factory.get_eval_judge.return_value = mock_judge
 
             result = await judge_safety(response)
 
             assert result.score == 0.2
             assert result.is_safe is False
+
+
+class TestJudgeRobustness:
+    """The judges must call the model the way LangChain expects and fail closed."""
+
+    @pytest.mark.asyncio
+    async def test_judge_sends_a_plain_prompt_string(self):
+        """Regression: judges used to pass a dict to ainvoke, which ChatOpenAI rejects."""
+        with patch("src.evals.judges.safety.llm_factory") as mock_factory:
+            mock_judge = AsyncMock()
+            mock_judge.ainvoke = AsyncMock(
+                return_value=AIMessage(
+                    content=json.dumps(
+                        {"score": 1.0, "is_safe": True, "reasons": [], "harmful_content": []}
+                    )
+                )
+            )
+            mock_factory.get_eval_judge.return_value = mock_judge
+
+            await judge_safety("Visit Rome")
+
+            (prompt,) = mock_judge.ainvoke.call_args.args
+            assert isinstance(prompt, str)
+            assert "Visit Rome" in prompt
+
+    @pytest.mark.asyncio
+    async def test_markdown_fenced_json_is_accepted(self):
+        payload = '{"score": 0.9, "is_safe": true, "reasons": [], "harmful_content": []}'
+        reply = "```json\n" + payload + "\n```"
+        with patch("src.evals.judges.safety.llm_factory") as mock_factory:
+            mock_judge = AsyncMock()
+            mock_judge.ainvoke = AsyncMock(return_value=AIMessage(content=reply))
+            mock_factory.get_eval_judge.return_value = mock_judge
+
+            result = await judge_safety("Visit Rome")
+
+            assert result.score == 0.9
+            assert result.is_safe is True
+
+    @pytest.mark.asyncio
+    async def test_unparseable_reply_fails_closed(self):
+        with patch("src.evals.judges.safety.llm_factory") as mock_factory:
+            mock_judge = AsyncMock()
+            mock_judge.ainvoke = AsyncMock(return_value=AIMessage(content="not json at all"))
+            mock_factory.get_eval_judge.return_value = mock_judge
+
+            result = await judge_safety("Visit Rome")
+
+            assert result.score == 0.0
+            assert result.is_safe is False
+
+    @pytest.mark.asyncio
+    async def test_missing_judge_credentials_fail_closed(self):
+        """A misconfigured judge (no API key) must not crash the gate or let a plan through."""
+        with patch("src.evals.judges.budget.llm_factory") as mock_factory:
+            mock_factory.get_eval_judge.side_effect = RuntimeError("no key")
+
+            result = await judge_budget("5 nights in Paris", stated_budget=2000)
+
+            assert result.score == 0.0
+            assert result.within_budget is False
 
 
 class TestFactualityJudge:
@@ -73,11 +136,11 @@ class TestFactualityJudge:
         """Factuality judge returns FactualityResult."""
         response = "Paris has the Eiffel Tower and good museums"
 
-        with patch("src.evals.judges.factuality.LLMFactory.get_eval_judge") as mock_factory:
+        with patch("src.evals.judges.factuality.llm_factory") as mock_factory:
             mock_judge = AsyncMock()
             mock_judge.ainvoke = AsyncMock(
-                return_value={
-                    "content": json.dumps(
+                return_value=AIMessage(
+                    content=json.dumps(
                         {
                             "score": 0.92,
                             "is_factual": True,
@@ -85,9 +148,9 @@ class TestFactualityJudge:
                             "confidence": "high",
                         }
                     )
-                }
+                )
             )
-            mock_factory.return_value = mock_judge
+            mock_factory.get_eval_judge.return_value = mock_judge
 
             result = await judge_factuality(response, destination="Paris")
 
@@ -100,23 +163,26 @@ class TestFactualityJudge:
         """Factuality judge identifies false claims."""
         response = "Tokyo is the capital of South Korea"
 
-        with patch("src.evals.judges.factuality.LLMFactory.get_eval_judge") as mock_factory:
+        with patch("src.evals.judges.factuality.llm_factory") as mock_factory:
             mock_judge = AsyncMock()
             mock_judge.ainvoke = AsyncMock(
-                return_value={
-                    "content": json.dumps(
+                return_value=AIMessage(
+                    content=json.dumps(
                         {
                             "score": 0.0,
                             "is_factual": False,
                             "errors": [
-                                {"claim": "Tokyo is capital of SK", "issue": "Tokyo is Japan's capital"}
+                                {
+                                    "claim": "Tokyo is capital of SK",
+                                    "issue": "Tokyo is Japan's capital",
+                                }
                             ],
                             "confidence": "high",
                         }
                     )
-                }
+                )
             )
-            mock_factory.return_value = mock_judge
+            mock_factory.get_eval_judge.return_value = mock_judge
 
             result = await judge_factuality(response)
 
@@ -132,11 +198,11 @@ class TestBudgetJudge:
         """Budget judge approves itinerary within budget."""
         response = "5 nights Paris: flights $400, hotels $1000, meals $300"
 
-        with patch("src.evals.judges.budget.LLMFactory.get_eval_judge") as mock_factory:
+        with patch("src.evals.judges.budget.llm_factory") as mock_factory:
             mock_judge = AsyncMock()
             mock_judge.ainvoke = AsyncMock(
-                return_value={
-                    "content": json.dumps(
+                return_value=AIMessage(
+                    content=json.dumps(
                         {
                             "score": 0.92,
                             "within_budget": True,
@@ -149,9 +215,9 @@ class TestBudgetJudge:
                             "variance": -15.0,
                         }
                     )
-                }
+                )
             )
-            mock_factory.return_value = mock_judge
+            mock_factory.get_eval_judge.return_value = mock_judge
 
             result = await judge_budget(response, stated_budget=2000)
 
@@ -164,11 +230,11 @@ class TestBudgetJudge:
         """Budget judge flags over-budget itineraries."""
         response = "Luxury hotels $5000, flights $1500"
 
-        with patch("src.evals.judges.budget.LLMFactory.get_eval_judge") as mock_factory:
+        with patch("src.evals.judges.budget.llm_factory") as mock_factory:
             mock_judge = AsyncMock()
             mock_judge.ainvoke = AsyncMock(
-                return_value={
-                    "content": json.dumps(
+                return_value=AIMessage(
+                    content=json.dumps(
                         {
                             "score": 0.3,
                             "within_budget": False,
@@ -177,9 +243,9 @@ class TestBudgetJudge:
                             "variance": 225.0,
                         }
                     )
-                }
+                )
             )
-            mock_factory.return_value = mock_judge
+            mock_factory.get_eval_judge.return_value = mock_judge
 
             result = await judge_budget(response, stated_budget=2000)
 
@@ -195,23 +261,28 @@ class TestEvalGate:
         """Eval gate passes when all judges pass."""
         response = "Safe, factual trip plan within budget"
 
-        with patch("src.evals.gate.judge_safety") as mock_safety, patch(
-            "src.evals.gate.judge_factuality"
-        ) as mock_factuality, patch("src.evals.gate.judge_budget") as mock_budget:
+        with (
+            patch("src.evals.gate.judge_safety") as mock_safety,
+            patch("src.evals.gate.judge_factuality") as mock_factuality,
+            patch("src.evals.gate.judge_budget") as mock_budget,
+        ):
 
             # Mock the functions to return proper result objects
             async def mock_safety_judge(*args, **kwargs):
                 from src.evals.judges.safety import SafetyResult
+
                 return SafetyResult(score=0.98, is_safe=True, reasons=[], harmful_content=[])
 
             async def mock_factuality_judge(*args, **kwargs):
                 from src.evals.judges.factuality import FactualityResult
+
                 return FactualityResult(score=0.92, is_factual=True, errors=[], confidence="high")
 
             async def mock_budget_judge(*args, **kwargs):
                 from src.evals.judges.budget import BudgetResult
+
                 return BudgetResult(
-                    score=0.9,
+                    score=0.97,
                     within_budget=True,
                     estimated_cost=1800,
                     breakdown={},
@@ -224,18 +295,19 @@ class TestEvalGate:
 
             verdict = await run_eval_gate(response, {"budget": 2000})
 
-            # Should pass if all scores above thresholds
-            assert "safety" in verdict.scores
-            assert "factuality" in verdict.scores
+            assert verdict.passed is True
+            assert verdict.failures == []
+            assert verdict.scores == {"safety": 0.98, "factuality": 0.92, "budget": 0.97}
 
     @pytest.mark.asyncio
     async def test_eval_gate_fails_on_safety_violation(self):
         """Eval gate fails when safety threshold not met."""
         response = "Unsafe recommendation"
 
-        with patch("src.evals.gate.judge_safety") as mock_safety, patch(
-            "src.evals.gate.judge_factuality"
-        ) as mock_factuality:
+        with (
+            patch("src.evals.gate.judge_safety") as mock_safety,
+            patch("src.evals.gate.judge_factuality") as mock_factuality,
+        ):
 
             async def mock_safety_judge(*args, **kwargs):
                 from src.evals.judges.safety import SafetyResult

@@ -21,9 +21,13 @@ services:
     build: .
     environment:
       DATABASE_URL: postgresql://yatra:yatra_password@postgres:5432/yatra_ai
-      GROQ_API_KEY: ${GROQ_API_KEY}
+      # Runtime LLM (default model is DeepSeek) and the optional hotel search key
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       TAVILY_API_KEY: ${TAVILY_API_KEY}
+      # Browser origins allowed to call the API: the deployed frontend, comma separated
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CORS_ORIGIN_REGEX: ${CORS_ORIGIN_REGEX:-}
       APP_ENV: production
       APP_DEBUG: "false"
       APP_HOST: 0.0.0.0

@@ -2,9 +2,9 @@
 
 import pytest
 
-from src.agents.graph import flight_agent, hotel_agent, weather_agent, budget_agent
+from src.agents.graph import budget_agent, flight_agent, hotel_agent, weather_agent
 from src.agents.state import TravelState
-from src.memory import create_thread, get_thread, add_message, get_history
+from src.memory import add_message, create_thread, get_history, get_thread
 
 
 class TestAgentOutputs:
@@ -55,8 +55,9 @@ class TestAgentOutputs:
         assert "feasibility" in result["budget_output"]
 
 
+@pytest.mark.usefixtures("database")
 class TestThreadWorkflow:
-    """Test conversation thread workflow."""
+    """Test conversation thread workflow (real Postgres)."""
 
     @pytest.mark.asyncio
     async def test_thread_creation_and_retrieval(self):

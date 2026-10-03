@@ -1,673 +1,152 @@
-# Yatra AI — Multi-Agent Travel Planner Specification
+# Yatra AI: Overview Specification
 
-**Version:** 1.0-spec  
-**Date:** 2026-09-29  
-**Status:** Phase 1 (Spec-Driven Build)  
-**Target Bar:** Senior AI engineer (3-year experience)  
-**Constraint:** LOW LATENCY (< 3s per agent, < 10s total trip draft)
+**Version:** 3.0
+**Date:** 2026-10-03
+**Status:** Implemented. This overview describes what the repository does today. The first
+version of this file (2026-09-29) was a plan written before the code existed; where the build
+changed the plan, this version follows the code. Version 3.0 adds the model fallback chain and
+the DeepEval agent evals with their CI job.
 
----
-
-## Table of Contents
-
-1. [Product Vision](#product-vision)
-2. [System Architecture](#system-architecture)
-3. [Core Workflows](#core-workflows)
-4. [Agent Specifications](#agent-specifications)
-5. [Data Model](#data-model)
-6. [API Contracts](#api-contracts)
-7. [Quality Gates](#quality-gates)
-8. [Deployment & Infrastructure](#deployment--infrastructure)
-9. [Implementation Roadmap](#implementation-roadmap)
+Detailed specs: `01-config`, `02-agents`, `03-tools-mcp`, `04-memory`, `05-api`, `06-tests`,
+`07-evals`, `08-gate-ci`, `10-frontend`. The README is the entry point for readers.
 
 ---
 
-## 1. Product Vision
+## 1. What it is
 
-**Mission:**  
-Build a production-grade travel planner that uses LangGraph supervisor + MCP tool integration to draft personalized itineraries, with human-in-the-loop approval and comprehensive evaluation.
+A multi-agent travel planner. A traveller writes a request in plain language. A supervisor checks
+it and picks which specialist agents to run. The agents gather flights, hotels and weather, work
+out a budget and draft an itinerary. The run then stops and waits for a human to approve the plan
+or reject it with feedback. A rejection produces a revised draft, up to a fixed number of times.
 
-**Users:**
-- Travel planners (end users)
-- Travel agents (API consumers)
-- Support teams (HITL approvers)
+Features, all implemented and tested:
 
-**Success Metrics:**
-- Trip draft latency < 10s (< 3s per agent)
-- Eval pass rate > 95% (safety, factuality, budget adherence)
-- Human approval rate > 90% (first-pass quality)
-- Cost per trip < $0.50 (LLM tokens)
+- Supervisor routing with an input guardrail that fails closed.
+- Parallel research workers (flight, hotel, weather).
+- Human-in-the-loop approval with LangGraph `interrupt()` and `Command(resume=...)`.
+- A PostgreSQL checkpointer, so a paused plan survives an application restart.
+- Real MCP servers (hotels, flights, weather) used through `langchain-mcp-adapters`, with an
+  in-process fallback.
+- A streaming API (Server-Sent Events) and a Next.js frontend.
 
----
+## 2. Architecture
 
-## 2. System Architecture
-
-### 2.1 High-Level Design
-
-```
-┌─────────────────┐
-│   FastAPI App   │  (async, SSE, Uvicorn)
-├─────────────────┤
-│  User Message   │
-│  + thread_id    │
-└────────┬────────┘
-         │
-    ┌────▼────────────────────────────┐
-    │  LangGraph StateGraph            │
-    │  (async, PostgreSQL checkpointer)│
-    │                                  │
-    │  ┌──────────────────────────┐    │
-    │  │ 1. Supervisor Agent      │◄───┼─── Input guardrail
-    │  │ (decides routing)        │    │
-    │  └───┬───────────────────┬──┘    │
-    │      │                   │        │
-    │   ┌──▼────┬──────┬─────┬─▼──┐    │
-    │   │Flight │Hotel │Weather│Budget  │
-    │   │Agent  │Agent │Agent  │Agent   │
-    │   └──┬────┴──────┴─────┴──┬─┘    │
-    │      │                   │        │
-    │   ┌──▼───────────────────▼──┐    │
-    │   │ 5. Itinerary Agent      │    │
-    │   │ (draft plan)            │    │
-    │   └───┬───────────────────┬─┘    │
-    │       │ (interrupt)       │      │
-    │   ┌───▼────────────────────▼──┐  │
-    │   │ 6. Human Approval Agent   │  │ ◄── HITL
-    │   │ (LangGraph interrupt)     │  │
-    │   └────┬────────────────────┬──┘  │
-    │        │ (resume)           │     │
-    │   ┌────▼────────────────────▼──┐  │
-    │   │ 7. Final Response Agent    │  │
-    │   │ (revise or polish)         │  │
-    │   └────┬───────────────────────┘  │
-    │        │                          │
-    │   ┌────▼──────────────┐           │
-    │   │ Evaluation Agent   │           │
-    │   │ (optional, off-line)│          │
-    │   └───────────────────┘           │
-    └────────┬───────────────────────────┘
-             │
-      ┌──────▼──────┐
-      │  PostgreSQL │  (thread state, messages, evals)
-      ├──────────────┤
-      │  Checkpoints │
-      └──────────────┘
+```mermaid
+flowchart LR
+    U[Browser<br/>Next.js] -->|SSE| A[FastAPI]
+    A --> G[LangGraph<br/>9 nodes]
+    G --> GW[tools gateway]
+    GW -->|stdio| M[3 MCP servers]
+    GW -.->|fallback| T[in-process tools]
+    M --> T
+    T --> P[(Tavily / Open-Meteo / sample data)]
+    G --> L[LLM<br/>DeepSeek]
+    G <--> S[(PostgreSQL<br/>checkpoints)]
+    A <--> D[(PostgreSQL<br/>threads, messages)]
 ```
 
-### 2.2 Components
-
-| Component | Tech | Purpose |
-|-----------|------|---------|
-| **FastAPI + Uvicorn** | Python 3.11+ | Async HTTP + SSE streaming |
-| **LangGraph** | Python | Agent orchestration + interrupt/resume |
-| **MCP** | Protocol | Tool integration (Tavily, AviationStack, OpenWeatherMap) |
-| **PostgreSQL** | DB | State checkpointing + long-term memory |
-| **Groq ChatGroq** | LLM | Primary runtime (cheap, fast) |
-| **OpenAI gpt-4o-mini** | LLM | Fallback + eval judge |
-| **Pydantic** | Python | Structured outputs + validation |
-| **Docker + Compose** | DevOps | Containerization + local dev parity |
-| **Terraform** | IaC | AWS/GCP infrastructure (future) |
-| **GitHub Actions** | CI | Test + eval gate (fails if skipped) |
-
-### 2.3 Data Flow
-
-1. **User submits trip query** → POST /api/travel { message, thread_id? }
-2. **App loads or creates thread** from PostgreSQL
-3. **Graph invokes supervisor** with guardrail check
-4. **Supervisor selects agents** + extracts constraints (JSON)
-5. **Agents run in order** (flight → hotel → weather → budget → itinerary)
-6. **Itinerary drafted** → `interrupt()` pauses graph
-7. **App returns draft** to user
-8. **User approves or revises** → POST /api/travel/approve { approved, feedback? }
-9. **App resumes graph** with `Command(resume=...)`
-10. **Final response agent** polishes or revises
-11. **App streams result** via SSE
-12. **Eval suite** (async, offline) scores thread on safety, factuality, cost
-
----
-
-## 3. Core Workflows
-
-### 3.1 Draft Trip
-
-**Trigger:** User submits prompt  
-**Flow:**
-
-```
-User Prompt
-    ↓
-Supervisor (guardrail check)
-    ↓ (allowed=true)
-Flight Agent (MCP: AviationStack)
-    ↓
-Hotel Agent (MCP: Tavily search)
-    ↓
-Weather Agent (MCP: OpenWeatherMap)
-    ↓
-Budget Agent (LLM calculation)
-    ↓
-Itinerary Agent (LLM draft)
-    ↓
-[interrupt()]
-    ↓
-Draft returned to user
-```
-
-**Expected latency:**
-- Supervisor: < 1s
-- Flight: < 2s (MCP call)
-- Hotel: < 2s (MCP call)
-- Weather: < 1s (MCP call)
-- Budget: < 1s (LLM)
-- Itinerary: < 2s (LLM)
-- **Total: < 10s**
-
-### 3.2 Approve & Finalize
-
-**Trigger:** User clicks "Approve" or "Request Revision"  
-**Flow:**
-
-```
-User feedback { approved, feedback? }
-    ↓
-[resume(feedback)]
-    ↓
-Final Response Agent
-    ↓ (if approved=true)
-Polish & format
-    ↓
-Return final trip plan
-    ↓
-Store in PostgreSQL
-```
-
-### 3.3 Evaluate (Async, Post-Production)
-
-**Trigger:** Background job, scheduled or on-demand  
-**Flow:**
-
-```
-Query PostgreSQL for unevaluated threads
-    ↓
-For each thread:
-  - Run JSON structure eval (LLM)
-  - Run factuality eval (LLM + data)
-  - Run cost eval (token count)
-  - Run safety eval (guardrail check)
-    ↓
-Store scores in PostgreSQL
-    ↓
-Alert if any < threshold
-```
-
----
-
-## 4. Agent Specifications
-
-### 4.1 Supervisor Agent
-
-**Input:** User message + trip constraints (user-provided)  
-**Output:** JSON { allowed: bool, reason: str, selected_agents: [str], constraints: {...} }
-
-**Guardrail Check:**
-- Is this a valid travel-planning request? (Yes/No)
-- Extract trip type: leisure, business, adventure, etc.
-- Extract date range, budget, party size.
-
-**Routing Logic:**
-- Always run: flight, itinerary, final_response.
-- Conditionally run: hotel (if trip > 1 day), weather (if >1 week), budget (if budget mentioned).
-
-**Latency SLA:** < 1s
-
-**LLM:** deepseek:deepseek-chat (primary)
-
-### 4.2–4.5 Specialist Agents (Flight, Hotel, Weather, Budget)
-
-#### Flight Agent
-- **Input:** Trip constraints (dates, party size, budget)
-- **Output:** JSON { flights: [...], airlines: [...], best_option: {...}, advice: str }
-- **MCP:** AviationStack
-- **Latency SLA:** < 2s
-- **LLM:** deepseek:deepseek-chat
-
-#### Hotel Agent
-- **Input:** Destination, dates, budget, preferences
-- **Output:** JSON { hotels: [...], neighborhoods: [...], recommendations: str }
-- **MCP:** Tavily (web search)
-- **Latency SLA:** < 2s
-- **LLM:** deepseek:deepseek-chat
-
-#### Weather Agent
-- **Input:** Destination, dates
-- **Output:** JSON { current: {...}, forecast: [...], packing_advice: str }
-- **MCP:** OpenWeatherMap
-- **Latency SLA:** < 1s
-- **LLM:** (LLM optional; mostly MCP data)
-
-#### Budget Agent
-- **Input:** All prior agent outputs
-- **Output:** JSON { categories: {...}, total_estimate: float, savings: [...], feasibility: bool, advice: str }
-- **MCP:** None (LLM + calculation)
-- **Latency SLA:** < 1s
-- **LLM:** deepseek:deepseek-chat
-
-### 4.6 Itinerary Agent
-
-**Input:** All prior outputs  
-**Output:** JSON { itinerary: [day1: {...}, day2: {...}, ...], highlights: [...], notes: str }
-
-**Logic:**
-- Build day-by-day schedule respecting flights, hotels, weather.
-- Suggest attractions, restaurants, activities.
-- Balance rest, activities, budget.
-
-**Latency SLA:** < 2s  
-**LLM:** deepseek:deepseek-chat
-
-### 4.7 Human Approval Agent
-
-**Input:** Drafted itinerary  
-**Action:** `interrupt()` pauses graph
-
-**Resume Payload:** { approved: bool, feedback: str? }
-
-**Logic:**
-- Approval: signal final_response to polish.
-- Revision: return feedback to itinerary agent for re-drafting.
-
-**Latency SLA:** Blocking (user-driven)
-
-### 4.8 Final Response Agent
-
-**Input:** Drafted itinerary + approval decision + feedback (if any)  
-**Output:** JSON { final_plan: {...}, summary: str, share_url: str? }
-
-**Logic:**
-- If approved: Polish formatting, add packing list, tips.
-- If revision requested: Re-draft itinerary with feedback, repeat approval.
-
-**Latency SLA:** < 2s  
-**LLM:** deepseek:deepseek-chat
-
-### 4.9 Evaluation Agent (Async, Off-Line)
-
-**Runs:** Post-production, via background job  
-**Input:** Completed thread from PostgreSQL  
-**Output:** JSON { safety_score, factuality_score, budget_adherence, cost_usd, passed: bool }
-
-**Evals:**
-- **Safety:** No harmful content, PII masked.
-- **Factuality:** Flights/hotels/weather data matches real data.
-- **Budget:** Estimated cost ≤ user budget + 10%.
-- **Cost:** Token count, API calls, total cost.
-
-**LLM (Judge):** openai:gpt-4o-mini (primary), openai:gpt-4.1-mini (secondary)
-
----
-
-## 5. Data Model
-
-### 5.1 TravelState (TypedDict)
-
-```python
-class TravelState(TypedDict):
-    # Input
-    message: str                       # User query
-    thread_id: str                     # For resumption
-    
-    # Supervisor output
-    allowed: bool
-    reason: str
-    selected_agents: list[str]
-    trip_constraints: dict
-    
-    # Agent outputs
-    flight_output: dict | None
-    hotel_output: dict | None
-    weather_output: dict | None
-    budget_output: dict | None
-    itinerary_output: dict | None
-    
-    # HITL
-    human_approval: bool | None
-    feedback: str | None
-    
-    # Final
-    final_response: dict
-    
-    # Metadata
-    created_at: str
-    updated_at: str
-    user_id: str
-    model_used: str
-    total_tokens: int
-    cost_usd: float
-    
-    # Evaluation
-    eval_scores: dict | None
-    eval_passed: bool | None
-```
-
-### 5.2 PostgreSQL Schema
-
-```sql
-CREATE TABLE threads (
-  id UUID PRIMARY KEY,
-  user_id UUID NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  status ENUM ('draft', 'approved', 'final', 'archived'),
-  state JSONB NOT NULL,  -- Full TravelState
-  PRIMARY KEY (id)
-);
-
-CREATE TABLE checkpoints (
-  id SERIAL PRIMARY KEY,
-  thread_id UUID NOT NULL REFERENCES threads(id),
-  checkpoint_id TEXT NOT NULL,
-  data JSONB NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE (thread_id, checkpoint_id)
-);
-
-CREATE TABLE evaluations (
-  id SERIAL PRIMARY KEY,
-  thread_id UUID NOT NULL REFERENCES threads(id),
-  safety_score FLOAT,
-  factuality_score FLOAT,
-  budget_adherence_score FLOAT,
-  cost_usd FLOAT,
-  passed BOOLEAN,
-  evaluated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
----
-
-## 6. API Contracts
-
-### 6.1 POST /api/travel
-
-**Request:**
-```json
-{
-  "message": "Plan a 5-day trip to Japan for 2 people, $3000 budget, March 2025",
-  "thread_id": "optional-uuid"
-}
-```
-
-**Response (202 Accepted - SSE stream):**
-```json
-{
-  "thread_id": "uuid",
-  "status": "draft",
-  "draft": {...}  // streamed
-}
-```
-
-### 6.2 POST /api/travel/approve
-
-**Request:**
-```json
-{
-  "thread_id": "uuid",
-  "approved": true,
-  "feedback": "optional revision notes"
-}
-```
-
-**Response (202 Accepted - SSE stream):**
-```json
-{
-  "thread_id": "uuid",
-  "status": "final",
-  "final_plan": {...}  // streamed
-}
-```
-
-### 6.3 GET /api/travel/{thread_id}
-
-**Response:**
-```json
-{
-  "thread_id": "uuid",
-  "status": "final",
-  "state": {...},
-  "eval_scores": {...},
-  "created_at": "ISO8601",
-  "updated_at": "ISO8601"
-}
-```
-
-### 6.4 GET /health
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "version": "1.0.0",
-  "features": ["supervisor", "mcp", "hitl", "evals"]
-}
-```
-
----
-
-## 7. Quality Gates
-
-### 7.1 Latency Gate
-
-| Component | SLA | Tolerance |
-|-----------|-----|-----------|
-| Supervisor | < 1s | 1.5s |
-| Flight Agent | < 2s | 3s |
-| Hotel Agent | < 2s | 3s |
-| Weather Agent | < 1s | 1.5s |
-| Budget Agent | < 1s | 1.5s |
-| Itinerary Agent | < 2s | 3s |
-| **Total Trip Draft** | **< 10s** | **15s** |
-
-### 7.2 Eval Gate (CI/CD)
-
-**PR Blocks if:**
-- Any eval run is skipped.
-- Safety score < 95%.
-- Factuality score < 90%.
-- Budget adherence < 95%.
-- Cost per trip > $0.50.
-
-**Eval Coverage:** ≥ 50 example trips (manual dataset) + 10 random production threads.
-
-### 7.3 Code Quality Gate
-
-- Linting (ruff) must pass.
-- Type checking (pyright) must pass.
-- Test coverage ≥ 80%.
-- No secrets in code (git-secrets).
-
----
-
-## 8. Deployment & Infrastructure
-
-### 8.1 Local Development
-
-**Docker Compose:**
-```yaml
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: yatra
-      POSTGRES_PASSWORD: dev
-    ports:
-      - "5432:5432"
-
-  yatra-api:
-    build: .
-    environment:
-      DATABASE_URL: postgresql://...
-      GROQ_API_KEY: ...
-    ports:
-      - "8000:8000"
-    depends_on:
-      - postgres
-
-  mcp-weather:
-    build: ./servers/weather
-    ports:
-      - "9001:8000"
-```
-
-### 8.2 Production Deployment (Terraform)
-
-**Target:** AWS (ECS) or GCP (Cloud Run)
-
-**Infrastructure:**
-- PostgreSQL (RDS or Cloud SQL)
-- FastAPI (ECS or Cloud Run)
-- MCP servers (sidecar or separate)
-- CloudFront + S3 (frontend)
-- GitHub Actions (CI/CD)
-
----
-
-## 9. Implementation Roadmap
-
-### Phase 1 (NIGHT MODE — Spec-Driven)
-- [x] Delete legacy code
-- [x] Create directory structure
-- [x] Write REFERENCE_ANALYSIS.md
-- [x] Write 00-overview.spec.md
-- [ ] Create .gitignore
-- [ ] Write BUILD_PLAN.md
-- [ ] Open PR
-
-### Phase 2 (Config + ML models)
-- [ ] src/config.py (Groq, OpenAI, env loading)
-- [ ] .mcp.json (MCP server config)
-- [ ] specs/01-config.spec.md
-
-### Phase 3 (Agents)
-- [ ] src/agents/supervisor.py
-- [ ] src/agents/flight.py
-- [ ] src/agents/hotel.py
-- [ ] src/agents/weather.py
-- [ ] src/agents/budget.py
-- [ ] src/agents/itinerary.py
-- [ ] src/agents/approval.py
-- [ ] src/agents/final_response.py
-- [ ] specs/02-agents.spec.md
-
-### Phase 4 (Tools + MCP)
-- [ ] src/tools/mcp_client.py
-- [ ] servers/weather_mcp.py
-- [ ] specs/03-tools-mcp.spec.md
-
-### Phase 5 (Memory + State)
-- [ ] src/memory/postgres_checkpoint.py
-- [ ] src/state.py (TravelState)
-- [ ] specs/04-memory.spec.md
-
-### Phase 6 (API)
-- [ ] src/api/app.py (FastAPI)
-- [ ] src/api/routes.py
-- [ ] specs/05-api.spec.md
-
-### Phase 7 (Tests)
-- [ ] tests/unit/test_agents.py
-- [ ] tests/integration/test_workflows.py
-- [ ] specs/06-tests.spec.md
-
-### Phase 8 (Evals — CENTERPIECE)
-- [ ] evals/datasets/trips.json (50+ examples)
-- [ ] evals/judges/safety_judge.py
-- [ ] evals/judges/factuality_judge.py
-- [ ] evals/judges/budget_judge.py
-- [ ] evals/judges/cost_judge.py
-- [ ] evals/run_evals.py
-- [ ] evals/eval_report.json
-- [ ] specs/07-evals.spec.md
-
-### Phase 9 (HITL Gate)
-- [ ] src/api/approval.py
-- [ ] src/api/hitl_store.py
-- [ ] Frontend JS for approval form
-- [ ] specs/08-hitl.spec.md
-
-### Phase 10 (Containers)
-- [ ] Dockerfile
-- [ ] docker-compose.yml
-- [ ] specs/09-containers.spec.md
-
-### Phase 11 (CI/CD)
-- [ ] .github/workflows/test.yml
-- [ ] .github/workflows/evals.yml
-- [ ] specs/10-ci.spec.md
-
-### Phase 12 (Terraform)
-- [ ] infra/main.tf
-- [ ] infra/variables.tf
-- [ ] specs/11-terraform.spec.md
-
-### Phase 13 (Claude Tooling)
-- [ ] CLAUDE.md
-- [ ] .claude/rules/*.md
-- [ ] .claude/commands/*.md
-- [ ] .claude/agents/*.md
-- [ ] .claude/skills/deploy/SKILL.md
-- [ ] specs/12-claude-tooling.spec.md
-
----
-
-## Appendix A: Model Policy (STRICT)
-
-**Runtime:**
-- Primary: `deepseek:deepseek-chat`
-- Fallback: `openai:gpt-4o-mini`
-
-**Eval Judges:**
-- Primary: `openai:gpt-4o-mini`
-- Secondary: `openai:gpt-4.1-mini`
-- Fallback: `deepseek:deepseek-chat`
-
-**FORBIDDEN:**
-- gpt-4.1, gpt-4, gpt-4-turbo, gpt-5.*
-- claude-* (all versions)
-
-**Rationale:** Cost, latency, reproducibility.
-
----
-
-## Appendix B: Conventions
-
-### Commit Format (Conventional Commits)
-
-```
-<type>(<scope>): <description>
-
-<body>
-
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01E36RmCwPd6Y4vLwW9s9yZ1
-```
-
-**Types:** feat, fix, docs, chore, refactor, perf, test, build, ci, style, revert
-
-### Python Style
-
-- Black formatter (88 chars)
-- Type hints everywhere (Pydantic + TypedDict)
-- No secrets in code (.env only)
-- Async first (FastAPI, asyncio)
-
-### File Naming
-
-- Agents: `src/agents/{name}.py`
-- Tools: `src/tools/{name}.py`
-- Tests: `tests/{unit|integration}/{feature}_test.py`
-- Specs: `specs/{NN}-{name}.spec.md`
-
----
-
-**End of Specification v1.0**  
-**Next Phase:** 02-config.spec.md (Phase 2)
+| Component | Technology | Purpose |
+|---|---|---|
+| API | FastAPI, Uvicorn, SSE | Streams progress, serves threads, resumes paused runs |
+| Orchestration | LangGraph | Supervisor, parallel workers, interrupt and resume |
+| Tools | MCP over stdio (FastMCP, `langchain-mcp-adapters`) with in-process fallback | Hotels via Tavily, weather via Open-Meteo, flights as sample data |
+| Storage | PostgreSQL 15 or newer, psycopg 3 | Thread and message history, LangGraph checkpoints |
+| LLM | DeepSeek (`deepseek:deepseek-flash`), with OpenAI `gpt-4.1-mini` and then DeepSeek as fallbacks | Supervisor, and itinerary revisions |
+| Frontend | Next.js 15, TypeScript, Tailwind | Request form, live progress, approval page, results |
+| Packaging | Docker, Docker Compose, `render.yaml` | Local stack and Render deployment |
+| CI | GitHub Actions | Lint, tests with Postgres, image build, agent evals with a merge gate script, verify workflow |
+
+## 3. Request flow
+
+1. `POST /api/plan` with a message. The API creates or loads the thread and streams events.
+2. The supervisor decides whether the request is a valid travel request, picks the workers and
+   extracts the trip constraints.
+3. The research workers run in parallel, then budget, then itinerary.
+4. The human approval node calls `interrupt()`. The state goes to the Postgres checkpointer, the
+   plan document is stored, and the stream ends with `approval_required`.
+5. `PUT /api/threads/{id}/approve` resumes the run with the decision. Approval ends the run with
+   a final response. A rejection needs feedback and goes through `revise` back to the itinerary,
+   until the cap (`MAX_REVISIONS`, default 3) is reached.
+
+The graph, routing and node details are in `02-agents`. The event names and status codes are in
+`05-api`.
+
+## 4. Data
+
+- **Graph state** (`TravelState`) is described in `02-agents`. It is stored by the checkpointer.
+- **Threads and messages** are two tables, described in `04-memory`. The plan document and the
+  approval decision are stored in message metadata.
+- There is no users table and no login. A thread's id is the only secret.
+
+## 5. API
+
+| Route | Purpose |
+|---|---|
+| `POST /api/plan` | Start a plan. Streams `thread`, `progress`, `plan`, optionally `approval_required`, then `done`, or one generic `error`. |
+| `PUT /api/threads/{id}/approve` | Resume a paused plan. Streams the same way. |
+| `GET /api/threads/{id}` | Thread, history, plan and approval state. |
+| `GET /health` | Liveness and feature list. |
+| `GET /ready` | Database check, plus MCP status for information. |
+
+## 6. Model policy
+
+| Use | Model |
+|---|---|
+| Runtime (supervisor, revisions) | `deepseek:deepseek-flash` |
+| Fallback | `openai:gpt-4.1-mini` |
+| Eval judge (no fallbacks) | `openai:gpt-4o-mini` |
+
+The runtime model is wrapped with `.with_fallbacks(...)`. If a call to the primary raises, for
+example on a timeout, a rate limit or an outage, the next model in `LLM_FALLBACK_MODELS` is tried.
+The default list is `openai:gpt-4.1-mini,deepseek:deepseek-flash`. A model that repeats the primary
+is dropped, so with the default primary the chain is DeepSeek, then OpenAI. If the primary is set to
+`openai:gpt-4.1-mini`, the chain is OpenAI, then DeepSeek. A model without an API key is left out of
+the chain with a warning. The chain is checked with fake
+clients only: no call to a real DeepSeek or OpenAI endpoint has been made yet.
+
+The config accepts four provider-prefixed ids: `deepseek:deepseek-flash`, `deepseek:deepseek-chat`
+(a legacy name that DeepSeek is retiring), `openai:gpt-4.1-mini` and `openai:gpt-4o-mini`. Ids that
+start with `claude-`, `gpt-4` or `gpt-5` and are not one of these are rejected with a clear error, and
+any other id is "unknown". The reason is cost and reproducibility. Details are in `01-config`.
+
+## 7. Quality gates (what exists)
+
+- **Lint and types:** ruff and black (line length 100) on `src tests evals .github/scripts`, and
+  pyright in strict mode on `src`.
+- **Tests:** 376 tests (339 unit, 37 integration), 91.15% line coverage in the last full run. The
+  integration tests need PostgreSQL. See `06-tests`.
+- **CI:** `.github/workflows/ci.yml` runs lint, tests against a Postgres service and a Docker
+  image build. `verify.yml` builds the compose stack, checks `/ready` and `/health`, runs the unit
+  tests and builds the frontend.
+- **Agent evals and the gate:** `evals/` runs the real graph on 15 golden tasks with DeepEval
+  (Task Completion, Plan Quality, Plan Adherence, a custom plan judge) and three code checks
+  (guardrail, routing, approval loop). `.github/scripts/eval_gate.py` turns the summary into an
+  exit code, and the `agent-evals` job in `ci.yml` calls both on a pull request. The job skips
+  without API keys, and it blocks a merge only after it is made a required status check. **No live
+  score exists yet.** The older request-time judges in `src/evals/` (safety 0.95, factuality 0.90,
+  budget 0.95) are plain prompts, are not wired into the graph and are not used by CI. See
+  `07-evals` and `08-gate-ci`.
+
+## 8. Not done, and not claimed
+
+- Flights are sample data, labelled as such. There is no free flight-pricing API.
+- The first-draft itinerary is built from a template. Only revisions use the LLM.
+- No latency numbers are published. The original plan set targets (under 10 seconds per draft),
+  but no measurement backs them, so they are not stated as results.
+- The Docker image has not been built on the author's machine, and the application has not been
+  run with a real LLM key from the browser. Both are covered by tests with fakes and by CI.
+- SSE on Render's free tier is unverified.
+- No live eval score has been recorded. The agent evals and the gate script are tested without a
+  model and wired into CI, but no run used real keys (see section 7).
+- The model fallback chain has not been exercised against real providers.
+- Nothing has run on GitHub Actions for this version of the code yet.
+
+## 9. Conventions
+
+- Commits: Conventional Commits (`feat`, `fix`, `docs`, `test`, `refactor`, `chore`), ending with
+  the attribution line the tooling adds.
+- Python: Black and ruff at line length 100, type hints everywhere, async first, no secrets in
+  code (environment variables only; see `.env.example`).
+- Files: agents in `src/agents/`, tools in `src/tools/`, MCP servers in `src/mcp_servers/`, tests
+  in `tests/unit/` and `tests/integration/`, specs in `specs/NN-name.spec.md`.
+- Build-night reports from 2026-09-29 are kept in `docs/history/` and are not maintained.

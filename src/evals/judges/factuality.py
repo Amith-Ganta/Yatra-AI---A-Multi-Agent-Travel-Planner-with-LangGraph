@@ -1,12 +1,13 @@
 """Factuality evaluation judge."""
 
-import json
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
-from src.core.llm import LLMFactory
+from src.core.llm import llm_factory
 from src.core.telemetry import logger
+
+from ._common import parse_judge_json
 
 
 class FactualityResult(BaseModel):
@@ -14,7 +15,7 @@ class FactualityResult(BaseModel):
 
     score: float
     is_factual: bool
-    errors: list[dict]
+    errors: list[dict[str, Any]]
     confidence: str  # "high", "medium", "low"
 
 
@@ -29,8 +30,6 @@ async def judge_factuality(
     - Real transportation options
     - Accurate pricing estimates
     """
-
-    judge = LLMFactory.get_eval_judge()
 
     destination_text = f"for {destination}" if destination else ""
 
@@ -58,13 +57,8 @@ Example:
 Return ONLY valid JSON, no other text."""
 
     try:
-        result = await judge.ainvoke({"messages": [{"role": "user", "content": prompt}]})
-
-        content = result.get("content", "{}")
-        if isinstance(result, dict) and "content" in result:
-            content = result["content"]
-
-        parsed = json.loads(content)
+        judge = llm_factory.get_eval_judge()
+        parsed = parse_judge_json(await judge.ainvoke(prompt))
 
         return FactualityResult(
             score=float(parsed.get("score", 0.5)),

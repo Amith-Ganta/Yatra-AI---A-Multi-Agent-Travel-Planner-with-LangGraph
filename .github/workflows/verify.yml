@@ -28,21 +28,23 @@ jobs:
         with:
           node-version: '20'
 
+      # requirements-eval.txt is requirements.txt plus DeepEval, so the eval suite's tests run too.
       - name: Install Python deps
-        run: pip install -q -r requirements.txt
+        run: pip install -q -r requirements-eval.txt
 
       - name: Tier 1 — Docker build
         run: docker compose build
 
       - name: Tier 1 — Start containers
-        run: |
-          docker compose up -d
-          sleep 25
+        run: docker compose up -d
 
+      # The API waits for Postgres and applies migrations on startup, so poll /ready
+      # (503 until the database answers) instead of sleeping a fixed time.
       - name: Tier 1 — /health check
         run: |
+          curl -fsS --retry 30 --retry-delay 2 --retry-connrefused --retry-all-errors \
+            http://localhost:8000/ready
           curl -fsS http://localhost:8000/health
-          curl -fsS http://localhost:8000/ready
 
       - name: Tier 1 — Stop containers
         if: always()

@@ -1,16 +1,27 @@
-"""Memory module: PostgreSQL-backed conversation storage and LangGraph checkpointing."""
+"""Memory module: PostgreSQL-backed conversation storage and LangGraph checkpoint storage."""
 
 from .db import DatabasePool, db_pool
-from .checkpointer import PostgreSQLCheckpointer
-from .threads import create_thread, get_thread, add_message, get_history, delete_thread
+from .saver import CheckpointStore, checkpoint_store
+from .threads import (
+    add_message,
+    create_thread,
+    delete_thread,
+    get_history,
+    get_latest_approval,
+    get_latest_plan,
+    get_thread,
+)
 
 __all__ = [
     "DatabasePool",
     "db_pool",
-    "PostgreSQLCheckpointer",
+    "CheckpointStore",
+    "checkpoint_store",
     "create_thread",
     "get_thread",
     "add_message",
     "get_history",
     "delete_thread",
+    "get_latest_plan",
+    "get_latest_approval",
 ]

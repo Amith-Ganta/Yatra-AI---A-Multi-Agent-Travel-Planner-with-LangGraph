@@ -1,12 +1,13 @@
 """Budget evaluation judge."""
 
-import json
-from typing import Optional
+from typing import Any
 
 from pydantic import BaseModel
 
-from src.core.llm import LLMFactory
+from src.core.llm import llm_factory
 from src.core.telemetry import logger
+
+from ._common import parse_judge_json
 
 
 class BudgetResult(BaseModel):
@@ -15,11 +16,13 @@ class BudgetResult(BaseModel):
     score: float
     within_budget: bool
     estimated_cost: float
-    breakdown: dict
+    breakdown: dict[str, Any]
     variance: float  # percentage over/under budget
 
 
-async def judge_budget(response: str, stated_budget: float, threshold: float = 0.95) -> BudgetResult:
+async def judge_budget(
+    response: str, stated_budget: float, threshold: float = 0.95
+) -> BudgetResult:
     """Evaluate if itinerary stays within stated budget.
 
     Analyzes:
@@ -29,8 +32,6 @@ async def judge_budget(response: str, stated_budget: float, threshold: float = 0
     - Activity costs
     - Total variance from budget
     """
-
-    judge = LLMFactory.get_eval_judge()
 
     prompt = f"""Analyze cost adherence for this trip plan (stated budget: ${stated_budget}).
 
@@ -65,13 +66,8 @@ Example:
 Return ONLY valid JSON, no other text."""
 
     try:
-        result = await judge.ainvoke({"messages": [{"role": "user", "content": prompt}]})
-
-        content = result.get("content", "{}")
-        if isinstance(result, dict) and "content" in result:
-            content = result["content"]
-
-        parsed = json.loads(content)
+        judge = llm_factory.get_eval_judge()
+        parsed = parse_judge_json(await judge.ainvoke(prompt))
 
         return BudgetResult(
             score=float(parsed.get("score", 0.5)),

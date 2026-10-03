@@ -1,22 +1,20 @@
 {
   "mcpServers": {
-    "tavily": {
+    "yatra-hotels": {
       "command": "python",
-      "args": ["-m", "mcp.tavily"],
+      "args": ["-m", "src.mcp_servers.hotels"],
       "env": {
         "TAVILY_API_KEY": "${TAVILY_API_KEY}"
       }
     },
-    "aviationstack": {
+    "yatra-flights": {
       "command": "python",
-      "args": ["-m", "mcp.aviation"],
-      "env": {
-        "AVIATIONSTACK_API_KEY": "${AVIATIONSTACK_API_KEY}"
-      }
+      "args": ["-m", "src.mcp_servers.flights"],
+      "env": {}
     },
-    "openmeteo": {
+    "yatra-weather": {
       "command": "python",
-      "args": ["-m", "mcp.weather"],
+      "args": ["-m", "src.mcp_servers.weather"],
       "env": {}
     }
   }

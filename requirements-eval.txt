@@ -1,0 +1,3 @@
+# Eval suite only. Not installed on Render (deepeval pulls in pytest plugins as hard dependencies).
+-r requirements.txt
+deepeval==4.1.5

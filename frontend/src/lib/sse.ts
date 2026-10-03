@@ -1,38 +1,29 @@
-import { SSEEvent } from './types';
+// Minimal server-sent-events parser for fetch() streams. EventSource cannot be used because
+// POST /api/plan is a POST request with a JSON body.
 
-export interface SSEStreamHandler {
-  onEvent: (event: SSEEvent) => void;
-  onError: (error: Error) => void;
-  onComplete: () => void;
-}
+/**
+ * Split a buffer into complete SSE frames and return the JSON payload of each `data:` line,
+ * plus whatever is left over (an incomplete trailing frame) to prepend to the next chunk.
+ * Frames that are not valid JSON are skipped.
+ */
+export function parseSseBuffer(buffer: string): { payloads: unknown[]; rest: string } {
+  const normalised = buffer.replace(/\r\n/g, '\n');
+  const frames = normalised.split('\n\n');
+  const rest = frames.pop() ?? '';
 
-export function subscribeToStream(
-  threadId: string,
-  handlers: SSEStreamHandler
-): () => void {
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-  const eventSource = new EventSource(`${API_BASE}/api/plan/stream?thread_id=${threadId}`);
-
-  eventSource.addEventListener('progress', (event: Event) => {
+  const payloads: unknown[] = [];
+  for (const frame of frames) {
+    const data = frame
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n');
+    if (!data) continue;
     try {
-      const data = JSON.parse((event as MessageEvent).data);
-      handlers.onEvent(data);
-    } catch (err) {
-      handlers.onError(err as Error);
+      payloads.push(JSON.parse(data));
+    } catch {
+      // ignore a malformed frame rather than killing the whole stream
     }
-  });
-
-  eventSource.addEventListener('complete', () => {
-    handlers.onComplete();
-    eventSource.close();
-  });
-
-  eventSource.addEventListener('error', () => {
-    handlers.onError(new Error('SSE stream error'));
-    eventSource.close();
-  });
-
-  return () => {
-    eventSource.close();
-  };
+  }
+  return { payloads, rest };
 }

@@ -1,7 +1,7 @@
 {
   "name": "yatra-ai-frontend",
   "version": "1.0.0",
-  "description": "Flipkart-style travel planning UI with Next.js 14",
+  "description": "Web UI for the Yatra AI multi-agent travel planner (Next.js 15)",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -12,26 +12,25 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "next": "^14.0.0",
+    "autoprefixer": "^10.4.16",
+    "next": "^15.5.27",
+    "postcss": "^8.4.31",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tailwindcss": "^3.3.0",
-    "autoprefixer": "^10.4.16",
-    "postcss": "^8.4.31",
     "recharts": "^2.10.0",
-    "axios": "^1.6.0",
+    "tailwindcss": "^3.3.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "typescript": "^5.2.0",
+    "@playwright/test": "^1.40.0",
+    "@testing-library/jest-dom": "^6.1.0",
+    "@testing-library/react": "^14.0.0",
     "@types/node": "^20.5.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "eslint": "^8.48.0",
-    "eslint-config-next": "^14.0.0",
+    "eslint-config-next": "^15.5.27",
     "jest": "^29.7.0",
-    "@testing-library/react": "^14.0.0",
-    "@testing-library/jest-dom": "^6.1.0",
-    "@playwright/test": "^1.40.0"
+    "typescript": "^5.2.0"
   }
 }

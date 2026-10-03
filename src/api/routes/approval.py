@@ -1,58 +1,86 @@
-"""Human-in-the-loop approval endpoints."""
+"""Human-in-the-loop approval endpoint.
+
+When a run pauses at the approval step, the person answers here. The answer resumes the paused
+graph on the same thread through ``Command(resume=...)`` and the new run is streamed as SSE, in
+the same format as ``POST /api/plan``:
+
+- approved: the graph finishes and the plan is final (status ``approved``)
+- rejected with feedback: the itinerary is revised and the graph pauses again with a new draft,
+  until the revision limit is reached (status ``revision_limit``, not approved)
+"""
+
+from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import Command
 from pydantic import BaseModel
-from typing import Optional
 
-from src.memory import get_thread, add_message
+from src.agents.runtime import get_graph
+from src.api.routes.planning import SSE_HEADERS
+from src.api.streaming import graph_events, is_running
 from src.core.telemetry import logger
+from src.memory import add_message, get_thread
 
 router = APIRouter(prefix="/api", tags=["approval"])
 
 
 class ApprovalRequest(BaseModel):
-    """Human approval request."""
+    """The person's decision on a draft plan."""
 
     approved: bool
     feedback: Optional[str] = None
 
 
-class ApprovalResponse(BaseModel):
-    """Approval response."""
+async def _has_pending_approval(thread_id: str) -> bool:
+    """True when the thread's graph is paused at the approval step."""
+    config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+    snapshot = await get_graph().aget_state(config)
+    return bool(snapshot.interrupts)
 
-    thread_id: str
-    approved: bool
-    status: str
 
-
-@router.put("/threads/{thread_id}/approve", response_model=ApprovalResponse)
+@router.put("/threads/{thread_id}/approve")
 async def approve_trip(thread_id: str, request: ApprovalRequest):
-    """Submit human approval or rejection for trip plan."""
+    """Approve the draft plan, or reject it with feedback so the itinerary is revised."""
+    feedback = (request.feedback or "").strip()
     try:
-        thread = await get_thread(thread_id)
-        if not thread:
+        if not await get_thread(thread_id):
             raise HTTPException(status_code=404, detail="Thread not found")
 
-        # Store approval in message history
-        approval_message = f"approved={request.approved}"
-        if request.feedback:
-            approval_message += f"; feedback={request.feedback}"
+        # A rejection without a reason would only regenerate the same draft
+        if not request.approved and not feedback:
+            raise HTTPException(
+                status_code=400,
+                detail="Tell us what to change when you reject the plan.",
+            )
 
-        await add_message(thread_id, "human_approval", approval_message)
+        if is_running(thread_id) or not await _has_pending_approval(thread_id):
+            raise HTTPException(
+                status_code=409,
+                detail="This trip has no plan waiting for approval.",
+            )
 
-        logger.info(
-            "Trip approval recorded",
-            extra={"thread_id": thread_id, "approved": request.approved},
+        # Keep the decision in the thread history next to the plan it answers
+        await add_message(
+            thread_id,
+            "human_approval",
+            f"approved={request.approved}" + (f"; feedback={feedback}" if feedback else ""),
+            {"kind": "approval", "approved": request.approved, "feedback": feedback},
         )
-
-        return ApprovalResponse(
-            thread_id=thread_id,
-            approved=request.approved,
-            status="approval_recorded",
-        )
-
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error("Approval error", extra={"error": str(e), "thread_id": thread_id})
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.error("Approval error", extra={"error": str(exc), "thread_id": thread_id})
+        raise HTTPException(status_code=500, detail="Could not record the approval.")
+
+    logger.info(
+        "Trip approval received",
+        extra={"thread_id": thread_id, "approved": request.approved},
+    )
+    decision: Command[Any] = Command(resume={"approved": request.approved, "feedback": feedback})
+    return StreamingResponse(
+        graph_events(decision, thread_id),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
+    )

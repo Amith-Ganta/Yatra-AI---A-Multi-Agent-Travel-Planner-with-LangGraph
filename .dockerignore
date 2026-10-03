@@ -1,0 +1,35 @@
+# The API image only needs the Python code. `COPY . .` would otherwise bake local secrets,
+# the frontend's node_modules and the git history into every layer.
+
+# Secrets (the template .env.example is harmless and stays)
+.env
+.env.*
+!.env.example
+
+# Version control and editors
+.git
+.github
+.vscode
+.idea
+.claude
+
+# Frontend (deployed separately, for example on Vercel)
+frontend/node_modules
+frontend/.next
+frontend/out
+
+# Python caches and local environments
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.venv
+venv
+htmlcov
+.coverage
+
+# Infrastructure and local logs
+terraform
+infra
+*.log

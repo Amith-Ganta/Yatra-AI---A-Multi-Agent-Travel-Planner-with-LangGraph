@@ -5,6 +5,10 @@ on:
     branches: [main, develop, "phase-*"]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -14,9 +18,10 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-      - run: pip install ruff black pyright
-      - run: ruff check src tests
-      - run: black --check src tests
+      # pyright needs the project's dependencies to resolve imports in strict mode
+      - run: pip install -r requirements.txt ruff black pyright
+      - run: ruff check src tests evals .github/scripts
+      - run: black --check src tests evals .github/scripts
       - run: pyright src
 
   test:
@@ -42,15 +47,16 @@ jobs:
         with:
           python-version: "3.11"
 
+      # requirements-eval.txt is requirements.txt plus DeepEval, so the eval suite's own tests
+      # run here too (they skip themselves when DeepEval is missing).
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-eval.txt
 
       - name: Run tests
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test_db
-          GROQ_API_KEY: dummy_key_for_tests
           OPENAI_API_KEY: dummy_key_for_tests
           TAVILY_API_KEY: dummy_key_for_tests
         run: pytest tests/ -v --cov=src --cov-report=xml
@@ -59,6 +65,67 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage.xml
+
+  # Runs the agent against the goldens in evals/datasets and fails the merge when a metric is
+  # below its bar (see .github/scripts/eval_gate.py). It calls real models, so it only runs on
+  # pull requests and manual runs, and only when both keys exist. Pull requests from forks get no
+  # secrets: those runs skip the gate instead of failing on a missing key.
+  agent-evals:
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    needs: [lint, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: agent-evals-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test_db
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Check for API keys
+        id: keys
+        run: |
+          if [ -n "$DEEPSEEK_API_KEY" ] && [ -n "$OPENAI_API_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::DEEPSEEK_API_KEY or OPENAI_API_KEY is not available to this run, so the agent evals are skipped."
+          fi
+
+      - name: Install dependencies
+        if: steps.keys.outputs.present == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-eval.txt
+
+      - name: Run the agent evals
+        if: steps.keys.outputs.present == 'true'
+        run: python -m evals.eval_agent
+
+      - name: Eval gate
+        if: steps.keys.outputs.present == 'true'
+        run: python .github/scripts/eval_gate.py
+
+      # With no keys there is no summary; --allow-skip turns that into a pass on purpose.
+      - name: Eval gate (skipped, no keys)
+        if: steps.keys.outputs.present != 'true'
+        run: python .github/scripts/eval_gate.py --allow-skip
+
+      - name: Upload eval reports
+        if: always() && steps.keys.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-eval-reports
+          path: |
+            evals/reports/
+            !evals/reports/.gitkeep
+          if-no-files-found: ignore
 
   build:
     needs: [lint, test]

@@ -1,16 +1,19 @@
 """Pytest configuration for unit tests."""
 
-import pytest
+import json
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
-from src.memory.db import DatabasePool
 
+import pytest
+from langgraph.checkpoint.memory import InMemorySaver
+
+from src.agents.runtime import close_graph, init_graph
+from src.memory.db import DatabasePool
 
 # In-memory simulated database for unit tests
 _test_db = {
     "threads": {},  # thread_id -> thread data
     "messages": {},  # thread_id -> [messages]
-    "checkpoints": {},  # (thread_id, step) -> state
 }
 
 
@@ -21,21 +24,26 @@ _mock_cursor.fetchall = AsyncMock(return_value=[])
 
 _mock_conn = AsyncMock()
 
+
 @asynccontextmanager
 async def _mock_cursor_cm():
     yield _mock_cursor
 
+
 _mock_conn.cursor = _mock_cursor_cm
 _mock_conn.commit = AsyncMock()
 
+
 @asynccontextmanager
-async def _mock_acquire():
+async def _mock_acquire(*args, **kwargs):
+    # Accepts (self, timeout=...) so it can replace the bound DatabasePool.acquire
     yield _mock_conn
 
 
 async def _mock_execute_insert(query, params):
     """Simulate INSERT/UPDATE operations."""
     from datetime import datetime
+
     query_lower = query.lower()
 
     if "insert into threads" in query_lower:
@@ -50,24 +58,27 @@ async def _mock_execute_insert(query, params):
                 "updated_at": datetime.now(),
             }
     elif "insert into messages" in query_lower:
-        # INSERT INTO messages (message_id, thread_id, role, content, metadata, created_at) VALUES (...)
+        # INSERT INTO messages (message_id, thread_id, role, content, metadata, ...)
         if len(params) >= 5:
-            message_id, thread_id, role, content, metadata = params[0], params[1], params[2], params[3], params[4]
+            message_id, thread_id, role, content, metadata = (
+                params[0],
+                params[1],
+                params[2],
+                params[3],
+                params[4],
+            )
             if thread_id not in _test_db["messages"]:
                 _test_db["messages"][thread_id] = []
-            _test_db["messages"][thread_id].append({
-                "message_id": message_id,
-                "thread_id": thread_id,
-                "role": role,
-                "content": content,
-                "metadata": metadata,
-                "created_at": datetime.now(),
-            })
-    elif "insert into checkpoints" in query_lower:
-        # INSERT INTO checkpoints (checkpoint_id, thread_id, step, state, created_at) VALUES (...)
-        if len(params) >= 4:
-            checkpoint_id, thread_id, step, state = params[0], params[1], params[2], params[3]
-            _test_db["checkpoints"][(thread_id, step)] = state
+            _test_db["messages"][thread_id].append(
+                {
+                    "message_id": message_id,
+                    "thread_id": thread_id,
+                    "role": role,
+                    "content": content,
+                    "metadata": metadata,
+                    "created_at": datetime.now(),
+                }
+            )
     elif "update threads" in query_lower:
         # UPDATE threads SET updated_at = NOW() WHERE thread_id = %s
         if len(params) >= 1 and params[0] in _test_db["threads"]:
@@ -82,49 +93,49 @@ async def _mock_execute_insert(query, params):
 
 async def _mock_execute(query, params=()):
     """Simulate SELECT operations."""
-    from datetime import datetime
     query_lower = query.lower()
 
     if "from threads" in query_lower and "select" in query_lower:
-        # SELECT thread_id, user_id, created_at, updated_at, metadata FROM threads WHERE thread_id = %s
+        # SELECT thread_id, user_id, created_at, updated_at, metadata FROM threads ...
         if len(params) > 0:
             thread_id = params[0]
             if thread_id in _test_db["threads"]:
                 t = _test_db["threads"][thread_id]
                 return [(t["id"], t["user_id"], t["created_at"], t["updated_at"], t["metadata"])]
         return []
+    elif "metadata -> 'plan'" in query_lower:
+        # latest plan document: SELECT metadata -> 'plan' FROM messages WHERE kind = 'plan'
+        plans = [
+            json.loads(msg["metadata"])["plan"]
+            for msg in _test_db["messages"].get(params[0], [])
+            if json.loads(msg["metadata"]).get("kind") == "plan"
+        ]
+        return [(plans[-1],)] if plans else []
+    elif "role = 'human_approval'" in query_lower:
+        # latest decision: SELECT metadata FROM messages WHERE role = 'human_approval'
+        decisions = [
+            msg["metadata"]
+            for msg in _test_db["messages"].get(params[0], [])
+            if msg["role"] == "human_approval"
+        ]
+        return [(decisions[-1],)] if decisions else []
     elif "from messages" in query_lower and "select" in query_lower:
-        # SELECT message_id, role, content, metadata, created_at FROM messages WHERE thread_id = %s ORDER BY created_at ASC LIMIT %s
+        # SELECT message_id, role, content, metadata, created_at FROM messages ...
         if len(params) > 0:
             thread_id = params[0]
             if thread_id in _test_db["messages"]:
                 messages = _test_db["messages"][thread_id]
                 limit = params[1] if len(params) > 1 else 50
-                return [(msg["message_id"], msg["role"], msg["content"], msg["metadata"], msg["created_at"]) for msg in messages[:limit]]
-        return []
-    elif "from checkpoints" in query_lower and "select" in query_lower:
-        if "checkpoint_id, step, created_at" in query_lower:
-            # SELECT checkpoint_id, step, created_at FROM checkpoints WHERE thread_id = %s ORDER BY step DESC
-            thread_id = params[0]
-            result = []
-            for (tid, step), state in _test_db["checkpoints"].items():
-                if tid == thread_id:
-                    # Generate a checkpoint_id based on the state content (deterministic)
-                    checkpoint_id = hash(state) % (10**10)
-                    result.append((str(checkpoint_id), step, datetime.now()))
-            return sorted(result, key=lambda x: x[1], reverse=True)
-        elif "and step" in query_lower or ("step = %s" in query_lower or "step=%s" in query_lower):
-            # SELECT state FROM checkpoints WHERE thread_id = %s AND step = %s
-            if len(params) >= 2:
-                thread_id, step = params[0], params[1]
-                if (thread_id, step) in _test_db["checkpoints"]:
-                    return [(_test_db["checkpoints"][(thread_id, step)],)]
-        else:
-            # SELECT state FROM checkpoints WHERE thread_id = %s ORDER BY step DESC LIMIT 1
-            thread_id = params[0]
-            for (tid, step), state in sorted(_test_db["checkpoints"].items(), key=lambda x: x[0][1], reverse=True):
-                if tid == thread_id:
-                    return [(state,)]
+                return [
+                    (
+                        msg["message_id"],
+                        msg["role"],
+                        msg["content"],
+                        msg["metadata"],
+                        msg["created_at"],
+                    )
+                    for msg in messages[:limit]
+                ]
         return []
 
     return []
@@ -142,7 +153,6 @@ def mock_db_pool(monkeypatch):
     # Reset the test database before each test
     _test_db["threads"].clear()
     _test_db["messages"].clear()
-    _test_db["checkpoints"].clear()
 
     # Patch the DatabasePool methods directly
     monkeypatch.setattr(DatabasePool, "acquire", _mock_acquire)
@@ -153,6 +163,14 @@ def mock_db_pool(monkeypatch):
     monkeypatch.setattr(DatabasePool, "close", AsyncMock())
 
 
+@pytest.fixture(autouse=True)
+def graph_runtime():
+    """A fresh graph with an in-memory saver, so interrupt/resume works without Postgres."""
+    init_graph(InMemorySaver())
+    yield
+    close_graph()
+
+
 @pytest.fixture
 def client():
     """FastAPI test client."""
@@ -160,4 +178,5 @@ def client():
 
     app = create_app()
     from starlette.testclient import TestClient
+
     return TestClient(app)

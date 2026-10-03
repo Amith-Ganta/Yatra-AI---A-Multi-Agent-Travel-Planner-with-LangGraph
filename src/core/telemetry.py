@@ -3,9 +3,10 @@
 import logging
 import threading
 from contextvars import ContextVar
+from typing import Any, TextIO
 from uuid import uuid4
 
-from pythonjsonlogger import jsonlogger
+from pythonjsonlogger.json import JsonFormatter
 
 from .config import settings
 
@@ -35,6 +36,30 @@ class TraceContext:
         trace_id_var.set("")
 
 
+class _TraceIdFilter(logging.Filter):
+    """Stamp every record with the active trace id unless the caller already passed one."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not getattr(record, "trace_id", None):
+            record.__dict__["trace_id"] = trace_id_var.get() or None
+        return True
+
+
+def build_handler(stream: TextIO | None = None) -> logging.Handler:
+    """A handler that writes one JSON object per record: ts, level, name, trace_id, message."""
+    handler = logging.StreamHandler(stream)
+    handler.addFilter(_TraceIdFilter())
+    handler.setFormatter(
+        JsonFormatter(
+            # These are the LogRecord attribute names; "level" and "ts" are the output keys
+            fmt="%(levelname)s %(name)s %(trace_id)s %(message)s",
+            rename_fields={"levelname": "level"},
+            timestamp="ts",
+        )
+    )
+    return handler
+
+
 def setup_logging() -> logging.Logger:
     """Configure JSON logging at startup."""
     logger = logging.getLogger("yatra")
@@ -43,13 +68,7 @@ def setup_logging() -> logging.Logger:
     if logger.handlers:
         return logger
 
-    handler = logging.StreamHandler()
-    formatter = jsonlogger.JsonFormatter(
-        fmt="%(timestamp)s %(level)s %(name)s %(trace_id)s %(message)s",
-        rename_fields={"timestamp": "ts"},
-    )
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
+    logger.addHandler(build_handler())
 
     return logger
 
@@ -57,8 +76,8 @@ def setup_logging() -> logging.Logger:
 logger = setup_logging()
 
 
-def log_with_context(level: int, msg: str, **kwargs) -> None:
+def log_with_context(level: int, msg: str, **kwargs: Any) -> None:
     """Log with trace ID."""
-    extra = kwargs.pop("extra", {})
+    extra: dict[str, Any] = kwargs.pop("extra", {})
     extra["trace_id"] = TraceContext.get()
     logger.log(level, msg, extra=extra, **kwargs)

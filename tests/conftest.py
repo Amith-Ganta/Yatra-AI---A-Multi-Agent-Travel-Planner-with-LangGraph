@@ -1,14 +1,23 @@
 """Global test configuration and fixtures."""
 
+import asyncio
 import os
+import sys
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+
+# psycopg's async pool cannot run on the default Windows ProactorEventLoop
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 # Ensure test environment variables are set before any imports of config
 os.environ.setdefault("OPENAI_API_KEY", "sk-proj-test-key")
 os.environ.setdefault("DEEPSEEK_API_KEY", "sk-test-deepseek")
 os.environ.setdefault("DATABASE_URL", "postgresql://localhost:5432/test_yatra")
+# Tests never launch the MCP subprocesses; the gateway falls back to the in-process tools.
+os.environ.setdefault("MCP_ENABLED", "false")
 
 
 @pytest.fixture

@@ -1,179 +1,215 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import ProgressBar from '@/components/ProgressBar';
-import { useTripPlanner } from '@/hooks/useTripPlanner';
-import { TripConstraints } from '@/lib/types';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import PlanProgress from '@/components/PlanProgress';
+import { usePlanStream } from '@/hooks/usePlanStream';
+import {
+  MAX_NOTES_LENGTH,
+  MAX_TRAVELLERS,
+  MIN_BUDGET_USD,
+  buildPlanMessage,
+  todayISO,
+  validatePlanForm,
+} from '@/lib/format';
+import type { PlanRequestForm } from '@/lib/types';
 
-export default function PlanPage() {
+const FIELD =
+  'w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue disabled:bg-gray-100';
+const LABEL = 'block text-sm font-semibold mb-2 text-flipkart-dark';
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function PlanForm() {
   const router = useRouter();
-  const { startPlanning, loading, error, threadId } = useTripPlanner();
-  const [step, setStep] = useState(1);
+  const params = useSearchParams();
+  const { loading, error, nodes, start } = usePlanStream();
 
-  const [form, setForm] = useState({
-    destination: '',
-    departure_date: '',
-    return_date: '',
-    party_size: 2,
-    budget: 1000,
+  const [form, setForm] = useState<PlanRequestForm>(() => {
+    const departure = params.get('departure') ?? '';
+    return {
+      destination: (params.get('destination') ?? '').slice(0, 100),
+      departureDate: ISO_DATE.test(departure) ? departure : '',
+      returnDate: '',
+      partySize: 2,
+      budget: 2000,
+      notes: '',
+    };
   });
+  const [formError, setFormError] = useState<string | null>(null);
+  const [rejection, setRejection] = useState<string | null>(null);
+  // Read on the client only, so the server render and the first client render match.
+  const [today, setToday] = useState('');
+  useEffect(() => setToday(todayISO()), []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setForm({
-      ...form,
-      [name]: name === 'party_size' || name === 'budget' ? parseFloat(value) : value,
-    });
-  };
+  const update = <K extends keyof PlanRequestForm>(key: K, value: PlanRequestForm[K]) =>
+    setForm((current) => ({ ...current, [key]: value }));
 
-  const handleNext = () => {
-    if (step === 1) {
-      if (!form.destination || !form.departure_date || !form.return_date) {
-        alert('Please fill all destination and date fields');
-        return;
-      }
-      setStep(2);
-    }
-  };
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setRejection(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.destination || !form.departure_date || !form.return_date || form.party_size < 1) {
-      alert('Please fill all fields');
+    const problem = validatePlanForm(form, today);
+    setFormError(problem);
+    if (problem) return;
+
+    const run = await start({ message: buildPlanMessage(form) });
+    if (!run) return;
+    if (run.plan.status === 'rejected') {
+      setRejection(run.plan.reason);
       return;
     }
-
-    const constraints: TripConstraints = form;
-    await startPlanning(constraints);
-
-    if (threadId) {
-      router.push(`/results/${threadId}`);
-    }
+    // The graph pauses before it finishes: a person has to approve the draft first.
+    router.push(run.awaitingApproval ? `/approve/${run.threadId}` : `/results/${run.threadId}`);
   };
+
+  const shownError = formError ?? error;
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
-      <h1 className="text-3xl font-bold mb-2 text-flipkart-dark">Plan Your Trip</h1>
-      <p className="text-gray-600 mb-8">Let AI agents find the perfect itinerary for you</p>
+      <h1 className="text-3xl font-bold mb-2 text-flipkart-dark">Plan your trip</h1>
+      <p className="text-gray-600 mb-8">
+        Tell us where and when. Our agents will look at flights, hotels and weather, then draft an
+        itinerary and a budget. You review the draft and approve it, or ask for changes.
+      </p>
 
-      <ProgressBar current={step} total={2} />
-
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow-card p-8 mt-8">
-        {step === 1 && (
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-semibold mb-2 text-flipkart-dark">
-                Destination
-              </label>
-              <input
-                type="text"
-                name="destination"
-                value={form.destination}
-                onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue"
-                required
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-flipkart-dark">
-                  Departure Date
-                </label>
-                <input
-                  type="date"
-                  name="departure_date"
-                  value={form.departure_date}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-semibold mb-2 text-flipkart-dark">
-                  Return Date
-                </label>
-                <input
-                  type="date"
-                  name="return_date"
-                  value={form.return_date}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue"
-                  required
-                />
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleNext}
-              className="w-full bg-flipkart-blue hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg transition"
-            >
-              Next
-            </button>
+      <form onSubmit={handleSubmit} noValidate className="bg-white rounded-lg shadow-card p-6 sm:p-8">
+        <fieldset disabled={loading} className="space-y-6">
+          <div>
+            <label htmlFor="destination" className={LABEL}>
+              Destination
+            </label>
+            <input
+              id="destination"
+              type="text"
+              value={form.destination}
+              maxLength={100}
+              placeholder="For example Lisbon"
+              onChange={(e) => update('destination', e.target.value)}
+              className={FIELD}
+            />
           </div>
-        )}
 
-        {step === 2 && (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-2 text-flipkart-dark">
-                Number of Travelers
+              <label htmlFor="departure" className={LABEL}>
+                Departure date
               </label>
               <input
-                type="number"
-                name="party_size"
-                value={form.party_size}
-                onChange={handleChange}
-                min="1"
-                max="10"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue"
-                required
+                id="departure"
+                type="date"
+                value={form.departureDate}
+                min={today || undefined}
+                onChange={(e) => update('departureDate', e.target.value)}
+                className={FIELD}
               />
             </div>
-
             <div>
-              <label className="block text-sm font-semibold mb-2 text-flipkart-dark">
-                Total Budget ($)
+              <label htmlFor="return" className={LABEL}>
+                Return date
               </label>
               <input
-                type="number"
-                name="budget"
-                value={form.budget}
-                onChange={handleChange}
-                min="100"
-                step="100"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-flipkart-blue"
-                required
+                id="return"
+                type="date"
+                value={form.returnDate}
+                min={form.departureDate || today || undefined}
+                onChange={(e) => update('returnDate', e.target.value)}
+                className={FIELD}
               />
-            </div>
-
-            {error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                {error}
-              </div>
-            )}
-
-            <div className="flex gap-4">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg transition"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex-1 bg-flipkart-orange hover:bg-orange-600 disabled:bg-gray-400 text-white font-bold py-2 px-4 rounded-lg transition"
-              >
-                {loading ? 'Planning...' : 'Start Planning'}
-              </button>
             </div>
           </div>
-        )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="travellers" className={LABEL}>
+                Travellers
+              </label>
+              <input
+                id="travellers"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={MAX_TRAVELLERS}
+                step={1}
+                value={Number.isNaN(form.partySize) ? '' : form.partySize}
+                onChange={(e) => update('partySize', e.target.valueAsNumber)}
+                className={FIELD}
+              />
+            </div>
+            <div>
+              <label htmlFor="budget" className={LABEL}>
+                Total budget (USD)
+              </label>
+              <input
+                id="budget"
+                type="number"
+                inputMode="decimal"
+                min={MIN_BUDGET_USD}
+                step={50}
+                value={Number.isNaN(form.budget) ? '' : form.budget}
+                onChange={(e) => update('budget', e.target.valueAsNumber)}
+                className={FIELD}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="notes" className={LABEL}>
+              Preferences <span className="font-normal text-gray-500">(optional)</span>
+            </label>
+            <textarea
+              id="notes"
+              rows={3}
+              maxLength={MAX_NOTES_LENGTH}
+              value={form.notes}
+              placeholder="For example: quiet neighbourhood, vegetarian food, museums"
+              onChange={(e) => update('notes', e.target.value)}
+              className={FIELD}
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-flipkart-orange hover:bg-orange-600 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition"
+          >
+            {loading ? 'Planning...' : 'Plan my trip'}
+          </button>
+        </fieldset>
       </form>
+
+      {shownError && (
+        <div
+          role="alert"
+          className="mt-6 bg-red-50 border border-red-300 text-red-800 px-4 py-3 rounded-lg"
+        >
+          {shownError}
+        </div>
+      )}
+
+      {rejection && (
+        <div
+          role="alert"
+          className="mt-6 bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-lg"
+        >
+          <p className="font-semibold mb-1">We could not plan that request</p>
+          <p className="text-sm">{rejection}</p>
+        </div>
+      )}
+
+      {(loading || nodes.length > 0) && !error && !rejection && (
+        <div className="mt-6">
+          <PlanProgress nodes={nodes} loading={loading} />
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function PlanPage() {
+  // useSearchParams needs a Suspense boundary for the static build.
+  return (
+    <Suspense fallback={<div className="max-w-2xl mx-auto px-4 py-12 text-gray-500">Loading...</div>}>
+      <PlanForm />
+    </Suspense>
   );
 }
