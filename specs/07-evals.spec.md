@@ -10,7 +10,8 @@
    LangGraph agent against a golden dataset and score each run. They follow the structure of the
    `campusx-official/agent-evals-deepeval` reference repository. A merge gate
    (`.github/scripts/eval_gate.py`) and a CI job (`agent-evals`) are wired to them. **No live
-   score from a real judge model has been recorded for this repository yet** (section 8.7).
+   score from a real judge model has been recorded for this repository yet** (section 8.7). The one
+   manual CI run failed before scoring, for two bugs that are fixed.
 
 The first version of this file (2026-09-29) described an `eval_gate` graph node, scores kept in
 the graph state and a CI gate that blocks merges. None of that exists, and it is gone.
@@ -232,6 +233,13 @@ revision still call the real model in both modes.
 requests it must refuse (2 easy, 1 medium, 1 difficult). Each golden carries
 `additional_metadata`: `difficulty`, `expect_allowed`, `expected_agents` and `hitl`.
 
+Trip dates in the goldens are templates: `{d+60}` means 60 days from today. `load_goldens` resolves
+them with `evals/dates.py` (`resolve_dates`), so a trip is always in the future. The first version
+used fixed 2099 dates, and the supervisor refused them as unrealistic, which failed the first CI
+run. `EVAL_TODAY=YYYY-MM-DD` pins the day for a repeatable run. Tests check that no golden keeps a
+`{d+` marker or a 2099 date, that every offset is between 30 and 180 days, and that no trip ends
+before it starts.
+
 `hitl` is the traveller script. The 4 refused tasks use `none` because they never reach the
 approval step. The 11 allowed tasks use 7 `approve`, 3 `reject_once` and 1 `reject_always`.
 
@@ -298,7 +306,7 @@ uses it only when the API keys are missing (`08-gate-ci`, section 3).
 
 ### 8.7 Tests and what is verified
 
-`tests/unit/test_eval_suite.py` has 64 tests and no network call (it skips itself when DeepEval
+`tests/unit/test_eval_suite.py` has 71 tests and no network call (it skips itself when DeepEval
 is not installed). They cover the goldens file, the traveller scripts, the plan text builder,
 the code checks, the fixture swap, the slim trace, the plan-judge helpers, the report summary
 and the gate's three exit codes, including the 80% routing boundary and the stub-summary
@@ -308,11 +316,11 @@ refusal.
 |---|---|
 | The wiring: real graph, real DeepEval iterator, interrupt and resume in one trace | A run with a stub judge (a plumbing check, never a score) |
 | The gate refuses a stub summary | Exit code 2, covered by a test |
-| The gate logic | 64 unit tests, plus a mutation check (breaking a rule made a test fail) |
+| The gate logic | 71 unit tests (the whole file), plus a mutation check (breaking a rule made a test fail) |
 
 | **Not** verified | Why |
 |---|---|
-| Any live score for Task Completion, Plan Quality, Plan Adherence or the custom judge | It needs `DEEPSEEK_API_KEY` and `OPENAI_API_KEY`, and no run with real keys has happened |
+| Any live score for Task Completion, Plan Quality, Plan Adherence or the custom judge | The first manual CI run failed before scoring (a key with a trailing newline, and 2099 dates that the supervisor refused). Both are fixed. No run has completed yet. |
 | That Plan Quality and Plan Adherence extract a sensible plan from the Yatra trace | Same reason |
 | That the plan judge separates good plans from bad ones | `check_plan_judge` has not run on a real model |
 | That the 0.7 bars are right for this agent | The numbers in the reference repository belong to a different agent. No baseline exists here. |

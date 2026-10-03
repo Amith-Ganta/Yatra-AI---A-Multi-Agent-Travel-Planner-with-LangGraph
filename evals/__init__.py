@@ -12,8 +12,12 @@ import os
 
 from dotenv import load_dotenv
 
+from src.envutil import strip_api_keys
+
 # .env first (it never overrides variables that are already set), then safe defaults.
 load_dotenv()
+# A secret pasted with a trailing newline otherwise fails at the first HTTP call.
+strip_api_keys()
 os.environ.setdefault("DEEPEVAL_TELEMETRY_OPT_OUT", "YES")
 # `src.core.config` refuses to import without a database URL. The eval graph uses an
 # in-memory checkpointer and never connects, so a placeholder is enough.

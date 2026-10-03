@@ -3,8 +3,9 @@
 **Version:** 3.0
 **Status:** Two GitHub Actions workflows exist. `ci.yml` has four jobs, one of which
 (`agent-evals`) runs the DeepEval agent evals and the real merge gate script. The workflows are
-written and checked locally, but **they have not run on GitHub yet**, so the first real run may
-still show a problem. The first version of this file (2026-09-29) said that the gate was a graph
+checked locally and on GitHub. On commit 808083d `CI Pipeline` (lint, test, Docker build) and
+`Verify` passed. `agent-evals` skips on a push; its first manual run **failed before scoring**
+(a key with a trailing newline, and 2099 dates), and both causes are fixed. The first version of this file (2026-09-29) said that the gate was a graph
 node and that failing evals blocked a merge. The second version said that no workflow called the
 gate. Both are out of date.
 **Dependencies:** `06-tests` (what the test jobs run) and `07-evals` (the agent evals and the
@@ -161,10 +162,11 @@ gate the merge" becomes true after step 3.
 
 ## 5. Other gaps in the pipeline
 
-- **No workflow has run on this code.** The changes in this work were checked locally: the lint
-  commands of the `lint` job are clean, and the whole suite passes (376 tests, 91.15% coverage,
-  `06-tests`) against a local PostgreSQL. The Docker build in `ci.yml`, Tier 1 of `verify.yml`
-  and the `agent-evals` job have never run.
+- **Only part of the pipeline has been seen working on GitHub.** On commit 808083d, the `lint`,
+  `test` and `build` jobs of `ci.yml` and all of `verify.yml` passed. The `agent-evals` job has no
+  passing run: its one manual run failed on a key stored with a trailing newline (`Illegal header
+  value`) and on goldens dated 2099, which the supervisor refuses. The fixes (`strip_api_keys`,
+  `{d+N}` dates) are checked locally (394 tests, 91.30% coverage, `06-tests`).
 - **A skipped eval run is green.** See section 3, step 4. Look for the notice in the job log.
 - **The eval judges are `gpt-4o-mini`.** A change of the judge model changes the scores, so a
   comparison between two runs needs the same `judge_model` field in the summary.

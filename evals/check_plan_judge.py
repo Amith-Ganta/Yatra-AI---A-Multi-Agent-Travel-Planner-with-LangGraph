@@ -11,6 +11,7 @@ real runs. Every case is repeated, because a judge model can wobble from call to
 import sys
 from typing import Any
 
+from evals.dates import day
 from evals.harness import judge_model_name, missing_keys
 from evals.judges.plan_judge import (
     FIXED_TAIL,
@@ -25,38 +26,38 @@ REPEATS = 3
 
 ROME = {
     "destination": "Rome",
-    "start_date": "2099-05-08",
-    "end_date": "2099-05-12",
+    "start_date": day(75),
+    "end_date": day(79),
     "budget_usd": 2000,
     "party_size": 2,
     "trip_type": "leisure",
 }
 PARIS_DAY = {
     "destination": "Paris",
-    "start_date": "2099-06-12",
-    "end_date": "2099-06-12",
+    "start_date": day(70),
+    "end_date": day(70),
     "budget_usd": 1000,
     "party_size": 1,
     "trip_type": "leisure",
 }
 PRAGUE = {
     "destination": "Prague",
-    "start_date": "2099-09-05",
-    "end_date": "2099-09-07",
+    "start_date": day(80),
+    "end_date": day(82),
     "budget_usd": 1000,
     "party_size": 1,
     "trip_type": "leisure",
 }
 BARCELONA = {
     "destination": "Barcelona",
-    "start_date": "2099-07-01",
-    "end_date": "2099-07-06",
+    "start_date": day(100),
+    "end_date": day(105),
     "budget_usd": 3000,
     "party_size": 4,
     "trip_type": "family",
 }
 
-ROME_TASK = "Plan a 5-day trip to Rome from 2099-05-08 to 2099-05-12 for two, budget $2000."
+ROME_TASK = f"Plan a 5-day trip to Rome from {day(75)} to {day(79)} for two, budget $2000."
 FULL = ["flight", "hotel", "weather", "budget"]
 
 # `expect` is what the judge must do. `selected` feeds the plan text unless `steps` is given.
@@ -129,7 +130,7 @@ CASES: list[dict[str, Any]] = [
         "name": "good: solo day trip, no hotel or budget",
         "expect": "PASS",
         "flaw": "none: one day, one traveller, no budget, so flight and weather are enough",
-        "task": "Plan a day trip to Paris on 2099-06-12 for just me.",
+        "task": f"Plan a day trip to Paris on {day(70)} for just me.",
         "constraints": PARIS_DAY,
         "selected": ["flight", "weather"],
     },
@@ -137,7 +138,7 @@ CASES: list[dict[str, Any]] = [
         "name": "good: solo trip, no budget mentioned",
         "expect": "PASS",
         "flaw": "none: three days, so a hotel, but no budget was given and the party is one",
-        "task": "Plan 3 days in Prague from 2099-09-05 to 2099-09-07 for me.",
+        "task": f"Plan 3 days in Prague from {day(80)} to {day(82)} for me.",
         "constraints": PRAGUE,
         "selected": ["flight", "hotel", "weather"],
     },
@@ -145,7 +146,7 @@ CASES: list[dict[str, Any]] = [
         "name": "good: family trip",
         "expect": "PASS",
         "flaw": "none",
-        "task": "Plan a 6-day trip to Barcelona for a family of 4, from 2099-07-01 to 2099-07-06.",
+        "task": f"Plan a 6-day trip to Barcelona for a family of 4, from {day(100)} to {day(105)}.",
         "constraints": BARCELONA,
         "selected": FULL,
     },

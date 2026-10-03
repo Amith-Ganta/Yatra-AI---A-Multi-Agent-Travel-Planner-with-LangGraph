@@ -57,6 +57,13 @@ environment variable (Docker, Render) always wins over the file. Two tests pin b
 `test_main_loads_dotenv_before_importing_the_app` and
 `test_main_does_not_let_the_file_override_real_environment_variables`.
 
+Right after that, `main.py` calls `strip_api_keys()` from `src/envutil.py`. It trims whitespace from
+`DEEPSEEK_API_KEY`, `OPENAI_API_KEY` and `TAVILY_API_KEY` in `os.environ`, removes a variable that
+is blank after trimming, and returns only the names it changed, never the values. Reason: a key
+saved with a trailing newline (common in a GitHub secret or a dashboard paste) makes the HTTP
+client fail with `Illegal header value`, and the error looks like a bad key. `evals/__init__.py`
+does the same. `src/envutil.py` must not import `src.core`, because `settings` is built on import.
+
 ## 2. `src/core/config.py`
 
 ### `ModelEnum`
@@ -86,6 +93,9 @@ behaviour is covered by a test with a fake client; it was not seen against the r
 | `max_tokens` | none | 2000 |
 | `temperature` | none | 0.7 |
 | `top_p` | none | 0.9 |
+
+Both API key fields also pass through `_clean_key`: a string is trimmed, and a blank string becomes
+`None`. This is a second layer behind `strip_api_keys()`, for code that builds `LLMConfig` directly.
 
 Every model value goes through the same allow-list check (`_coerce_model`), which runs before the
 enum check:
@@ -234,3 +244,6 @@ logs of a real request. The pieces exist and are tested; wiring them to a reques
 - `test_telemetry.py`: the JSON line shape, extra fields, the trace id from the context, an
   explicit id winning over the context, `null` outside a request.
 - `test_entrypoint.py`: the `.env` loading rules in section 1.
+- `test_envutil.py`: a trailing newline, a carriage return, tabs and spaces are stripped; a clean key is left
+  alone; a blank key is removed; missing variables are ignored; only names are returned; and
+  `LLMConfig` and `Settings` hold the cleaned key.

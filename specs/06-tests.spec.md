@@ -4,7 +4,7 @@
 **Status:** Implemented. This spec describes the test suite in `tests/` as it is today. The first
 version (2026-09-29) was a plan with code sketches; some of those sketches described files that
 were never written and one asserted nothing. They are gone. Version 3.0 adds the fallback-chain
-tests and the 64 tests of the DeepEval agent-eval suite (`tests/unit/test_eval_suite.py`).
+tests and the 71 tests of the DeepEval agent-eval suite (`tests/unit/test_eval_suite.py`).
 **Dependencies:** every other spec. Each of them has a "Tests" section that says what pins it.
 
 ---
@@ -15,13 +15,14 @@ The last full run, with a real PostgreSQL available, gave:
 
 | Result | Value |
 |---|---|
-| Tests | 376 passed: 339 unit and 37 integration (parametrised cases count separately) |
-| Line coverage | 91.15% of `src` (1447 statements, 113 missed, branch coverage on) |
-| Time | about 239 seconds for the full run |
+| Tests | 394 passed: 357 unit and 37 integration (parametrised cases count separately) |
+| Line coverage | 91.30% of `src` (1467 statements, 113 missed, branch coverage on) |
+| Time | about 217 seconds for the full run |
 | Where | A Windows 10 machine, Python 3.11, a throwaway local PostgreSQL 17 on port 55432, with `requirements-eval.txt` installed |
 
-That run was local. The same suite has **not** run on GitHub Actions yet, where it uses PostgreSQL 15
-and a fresh install (`08-gate-ci`). Without DeepEval installed, the 64 tests of
+That run was local. On GitHub Actions the suite passed on commit 808083d (PostgreSQL 15, a fresh
+install, `08-gate-ci`); the changes made after that commit have not run there yet. Without DeepEval
+installed, the 71 tests of
 `test_eval_suite.py` skip themselves and the rest run as before.
 
 No test calls a real LLM, and none calls a paid or rate-limited API. The network tools are faked
@@ -30,7 +31,7 @@ those run the repository's own MCP servers.
 
 ```mermaid
 flowchart TB
-    subgraph U["tests/unit (339 tests, no database needed)"]
+    subgraph U["tests/unit (357 tests, no database needed)"]
         U1[config, llm, telemetry, entrypoint]
         U2[agents, supervisor, trip, plan]
         U3[graph execution with InMemorySaver]
@@ -45,7 +46,7 @@ flowchart TB
     end
     U --> R[pytest]
     I --> R
-    R --> C[coverage 91.15%]
+    R --> C[coverage 91.30%]
 ```
 
 ---
@@ -59,6 +60,7 @@ tests/
     conftest.py            mock_db_pool, graph_runtime, client
     test_config.py         settings, model allow-list, DATABASE_URL rules
     test_entrypoint.py     .env loading in main.py
+    test_envutil.py        API-key whitespace cleaning (strip_api_keys, LLMConfig)
     test_llm_factory.py    model construction, wire names, caching, the fallback chain
     test_telemetry.py      JSON logs and trace id
     test_supervisor.py     routing, guardrail, constraint extraction
@@ -200,12 +202,12 @@ covered by the CI commands above.
 - No test is marked `unit`, `integration` or `slow` today, so `-m unit` selects nothing. Run a
   folder instead.
 - `pyproject.toml` configures coverage (`source = ["src"]`, branch coverage, usual exclusions).
-  There is no `fail_under` setting, so no minimum is enforced; the 91.15% above is a measurement,
+  There is no `fail_under` setting, so no minimum is enforced; the 91.30% above is a measurement,
   not a gate.
 
 ## 7. Coverage notes
 
-The files below 90% in the last run (91.15% overall), and what the missed lines are (checked
+The files below 90% in the last run (91.30% overall), and what the missed lines are (checked
 against the source):
 
 | File | Coverage | Missed code |
@@ -236,8 +238,8 @@ measured. Its behaviour is checked by `test_eval_suite.py` (section 3).
 - The DeepEval agent-eval suite is tested without a model (a stub judge and the real graph, plus
   unit tests of every helper and of the gate). **No live score exists** for Task Completion, Plan
   Quality or Plan Adherence (`07-evals`, section 8.7).
-- The coverage figure comes from a local run (Windows, PostgreSQL 17). CI uses PostgreSQL 15 and has
-  not run this code yet (`08-gate-ci`).
+- The coverage figure comes from a local run (Windows, PostgreSQL 17). CI uses PostgreSQL 15 and passed on
+  commit 808083d, before the key-cleaning and date changes (`08-gate-ci`).
 - The frontend has no automated tests. It is only checked by `next build`, which includes the
   TypeScript type check, in the `verify.yml` workflow. That workflow deletes the lockfile before
   it installs (`10-frontend`). `ci.yml` has no frontend step.

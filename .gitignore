@@ -139,3 +139,6 @@ secrets/
 evals/reports/*
 !evals/reports/.gitkeep
 evals/traces/
+
+# DeepEval writes its last test run here (several MB, regenerated on every run)
+.deepeval/

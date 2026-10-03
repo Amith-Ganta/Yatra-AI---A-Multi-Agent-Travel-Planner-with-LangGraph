@@ -415,4 +415,4 @@ def judge_model_name() -> str:
 
 def missing_keys() -> list[str]:
     """API keys a live run needs and does not have (the runtime model and the judge)."""
-    return [key for key in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY") if not os.getenv(key)]
+    return [key for key in ("DEEPSEEK_API_KEY", "OPENAI_API_KEY") if not os.getenv(key, "").strip()]

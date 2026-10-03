@@ -91,7 +91,16 @@ jobs:
       - name: Check for API keys
         id: keys
         run: |
-          if [ -n "$DEEPSEEK_API_KEY" ] && [ -n "$OPENAI_API_KEY" ]; then
+          # A secret pasted with a trailing newline breaks the HTTP call. The evals strip the
+          # keys, so this only warns (names, never values) and counts a blank key as missing.
+          trim() { printf '%s' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'; }
+          for name in DEEPSEEK_API_KEY OPENAI_API_KEY; do
+            value="${!name}"
+            if [ -n "$value" ] && [ "$value" != "$(trim "$value")" ]; then
+              echo "::warning::$name has leading or trailing whitespace (usually a pasted newline). It is stripped for this run; re-set the secret without it."
+            fi
+          done
+          if [ -n "$(trim "$DEEPSEEK_API_KEY")" ] && [ -n "$(trim "$OPENAI_API_KEY")" ]; then
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"

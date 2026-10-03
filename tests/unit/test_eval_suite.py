@@ -9,7 +9,9 @@ live run is `python -m evals.eval_agent`.
 import csv
 import importlib.util
 import json
+import re
 import threading
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +23,7 @@ from deepeval.dataset import Golden  # noqa: E402
 
 import evals.report as report  # noqa: E402
 import src.agents.graph as graph_module  # noqa: E402
-from evals import harness  # noqa: E402
+from evals import dates, eval_agent, harness  # noqa: E402
 from evals.judges import plan_judge  # noqa: E402
 from evals.slim_trace import (  # noqa: E402
     PAUSED_OUTPUT,
@@ -343,6 +345,59 @@ def test_missing_keys_names_what_is_absent(monkeypatch: pytest.MonkeyPatch) -> N
     assert harness.missing_keys() == ["OPENAI_API_KEY"]
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     assert harness.missing_keys() == []
+
+
+def test_missing_keys_treats_a_blank_value_as_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "  \n")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-real")
+    assert harness.missing_keys() == ["DEEPSEEK_API_KEY"]
+
+
+# --- dates that stay realistic ---------------------------------------------------------------
+
+
+def test_resolve_dates_counts_from_the_pinned_day(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVAL_TODAY", "2026-10-03")
+    assert dates.day(0) == "2026-10-03"
+    assert dates.day(60) == "2026-12-02"
+    assert dates.resolve_dates("from {d+60} to {d+64}") == "from 2026-12-02 to 2026-12-06"
+
+
+def test_resolve_dates_leaves_plain_text_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVAL_TODAY", "2026-10-03")
+    text = "Plan a trip to Lisbon next spring, budget $900 {not a date} {d+x}"
+    assert dates.resolve_dates(text) == text
+
+
+def test_today_ignores_a_blank_pin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVAL_TODAY", "  ")
+    assert dates.today() == date.today()
+
+
+def test_every_golden_resolves_to_realistic_dates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVAL_TODAY", "2026-10-03")
+    for golden in GOLDENS:
+        resolved = dates.resolve_dates(golden["input"])
+        assert "{d+" not in resolved
+        assert "2099" not in resolved
+        for stamp in re.findall(r"\d{4}-\d{2}-\d{2}", resolved):
+            offset = (date.fromisoformat(stamp) - date(2026, 10, 3)).days
+            assert 30 <= offset <= 180
+
+
+def test_a_trip_never_ends_before_it_starts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVAL_TODAY", "2026-10-03")
+    for golden in GOLDENS:
+        found = re.findall(r"\{d\+(\d+)\}", golden["input"])
+        assert found == sorted(found, key=int)
+
+
+def test_load_goldens_resolves_the_placeholders(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("EVAL_TODAY", "2026-10-03")
+    loaded = eval_agent.load_goldens(None).goldens
+    assert len(loaded) == len(GOLDENS)
+    assert all("{d+" not in g.input for g in loaded)
+    assert "2026-12-02" in loaded[0].input
 
 
 def test_judge_model_name(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -113,7 +113,7 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
 
 - **Lint and types:** ruff and black (line length 100) on `src tests evals .github/scripts`, and
   pyright in strict mode on `src`.
-- **Tests:** 376 tests (339 unit, 37 integration), 91.15% line coverage in the last full run. The
+- **Tests:** 394 tests (357 unit, 37 integration), 91.30% line coverage in the last full run. The
   integration tests need PostgreSQL. See `06-tests`.
 - **CI:** `.github/workflows/ci.yml` runs lint, tests against a Postgres service and a Docker
   image build. `verify.yml` builds the compose stack, checks `/ready` and `/health`, runs the unit
@@ -137,9 +137,10 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
   run with a real LLM key from the browser. Both are covered by tests with fakes and by CI.
 - SSE on Render's free tier is unverified.
 - No live eval score has been recorded. The agent evals and the gate script are tested without a
-  model and wired into CI, but no run used real keys (see section 7).
+  model and wired into CI. The one manual run with real keys failed before scoring (see section 7).
 - The model fallback chain has not been exercised against real providers.
-- Nothing has run on GitHub Actions for this version of the code yet.
+- On GitHub Actions, `CI Pipeline` and `Verify` passed on commit 808083d. The fixes made after it
+  (key cleaning, dated goldens) have not been seen there yet.
 
 ## 9. Conventions
 

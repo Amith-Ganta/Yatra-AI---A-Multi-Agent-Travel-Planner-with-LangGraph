@@ -13,10 +13,13 @@ if sys.platform == "win32":
 
 from dotenv import load_dotenv  # noqa: E402
 
+from src.envutil import strip_api_keys  # noqa: E402
+
 # Settings reads .env through pydantic, which does not touch os.environ. The tools and the MCP
 # server subprocesses read TAVILY_API_KEY from the environment, so a local .env has to be loaded
 # into it here. Real environment variables (Render, Docker) win over the file.
 load_dotenv(override=False)
+strip_api_keys()  # a key pasted with a trailing newline would fail at the first HTTP call
 
 from src.api import create_app  # noqa: E402
 

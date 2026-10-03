@@ -33,6 +33,13 @@ def _coerce_model(v: Any) -> Any:
     return v
 
 
+def _clean_key(v: Any) -> Any:
+    """Trim a pasted API key. A blank key counts as not set."""
+    if isinstance(v, str):
+        return v.strip() or None
+    return v
+
+
 class LLMConfig(BaseSettings):
     """LLM configuration."""
 
@@ -99,13 +106,13 @@ class LLMConfig(BaseSettings):
     @classmethod
     def validate_openai_key(cls, v: Any) -> Any:
         # Optional at startup; fail when actually used by eval model
-        return v
+        return _clean_key(v)
 
     @field_validator("deepseek_api_key", mode="before")
     @classmethod
     def validate_deepseek_key(cls, v: Any, info: ValidationInfo) -> Any:
         # Optional at startup; fail when actually used by runtime model
-        return v
+        return _clean_key(v)
 
     model_config = SettingsConfigDict(case_sensitive=False, extra="ignore", populate_by_name=True)
 

@@ -33,7 +33,7 @@ PostgreSQL. A Next.js frontend sits in front of it.
 
 **What is not built (do not claim it):** real flight prices (flights are sample data), an LLM-written
 first itinerary draft (it is a template), login or rate limiting, trip deletion through the API,
-a live eval score (the agent evals have never run with real API keys), a merge that is actually
+a live eval score (the agent evals have not completed a scored run with real API keys), a merge that is actually
 blocked by the gate (that needs the repository secrets and a required status check, see
 `DEPLOYMENT.md` section 11), a fallback that has been tried against real providers.
 
@@ -61,9 +61,11 @@ pytest tests/unit -q                              # no database needed
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-The last full local run (Windows, PostgreSQL 17, `requirements-eval.txt`): 376 tests passed
-(339 unit and 37 integration), 91.15% coverage. No workflow has run on this version of the code
-yet. Without DeepEval installed, `tests/unit/test_eval_suite.py` skips itself.
+The last full local run (Windows, PostgreSQL 17, `requirements-eval.txt`): 394 tests passed
+(357 unit and 37 integration), 91.30% coverage. On GitHub, `CI Pipeline` and `Verify` passed on commit
+808083d. `agent-evals` ran once by hand and failed before scoring (a key with a trailing newline, and
+2099 dates); both are fixed and no passing run is recorded yet. Without DeepEval installed,
+`tests/unit/test_eval_suite.py` skips itself.
 
 ### Agent evals (need real keys, not part of the tests)
 

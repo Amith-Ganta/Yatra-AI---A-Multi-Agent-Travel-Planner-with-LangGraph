@@ -26,6 +26,7 @@ from deepeval.evaluate.configs import AsyncConfig, DisplayConfig
 from deepeval.metrics import PlanAdherenceMetric, PlanQualityMetric, TaskCompletionMetric
 from deepeval.utils import get_or_create_event_loop
 
+from evals.dates import resolve_dates
 from evals.harness import (
     InterruptAwareHandler,
     build_eval_graph,
@@ -71,6 +72,8 @@ def deepeval_metrics(judge: str) -> dict[str, Any]:
 def load_goldens(limit: int | None) -> EvaluationDataset:
     dataset = EvaluationDataset()
     dataset.add_goldens_from_json_file(str(GOLDENS_PATH))
+    for golden in dataset.goldens:
+        golden.input = resolve_dates(golden.input)  # `{d+60}` becomes a date 60 days from today
     if limit:
         dataset = EvaluationDataset(goldens=list(dataset.goldens)[:limit])
     return dataset

@@ -1,6 +1,6 @@
 [
   {
-    "input": "Plan a 5-day trip to Lisbon for one person from 2099-03-10 to 2099-03-14 with a budget of $1500.",
+    "input": "Plan a 5-day trip to Lisbon for one person from {d+60} to {d+64} with a budget of $1500.",
     "additional_metadata": {
       "difficulty": "easy",
       "expect_allowed": true,
@@ -9,7 +9,7 @@
     }
   },
   {
-    "input": "I want a weekend in Rome from 2099-05-08 to 2099-05-10 for two people, budget $1800.",
+    "input": "I want a 3-day city break in Rome from {d+75} to {d+77} for two people, budget $1800.",
     "additional_metadata": {
       "difficulty": "easy",
       "expect_allowed": true,
@@ -18,7 +18,7 @@
     }
   },
   {
-    "input": "Plan a 4-day Tokyo trip from 2099-04-01 to 2099-04-04. I have $3000 to spend.",
+    "input": "Plan a 4-day Tokyo trip from {d+90} to {d+93}. I have $3000 to spend.",
     "additional_metadata": {
       "difficulty": "easy",
       "expect_allowed": true,
@@ -45,7 +45,7 @@
     }
   },
   {
-    "input": "Plan a day trip to Paris on 2099-06-12 for just me.",
+    "input": "Plan a day trip to Paris on {d+70} for just me.",
     "additional_metadata": {
       "difficulty": "medium",
       "expect_allowed": true,
@@ -54,7 +54,7 @@
     }
   },
   {
-    "input": "Plan a 6-day trip to Barcelona for a family of 4, from 2099-07-01 to 2099-07-06.",
+    "input": "Plan a 6-day trip to Barcelona for a family of 4, from {d+100} to {d+105}.",
     "additional_metadata": {
       "difficulty": "medium",
       "expect_allowed": true,
@@ -63,7 +63,7 @@
     }
   },
   {
-    "input": "Plan 3 days in Prague from 2099-09-05 to 2099-09-07 on a budget of 900 euros. I love food and local beer.",
+    "input": "Plan 3 days in Prague from {d+80} to {d+82} on a budget of 900 euros. I love food and local beer.",
     "additional_metadata": {
       "difficulty": "medium",
       "expect_allowed": true,
@@ -72,7 +72,7 @@
     }
   },
   {
-    "input": "Plan a solo trip to Vienna from 2099-12-20 to 2099-12-23, budget $1200.",
+    "input": "Plan a solo trip to Vienna from {d+110} to {d+113}, budget $1200.",
     "additional_metadata": {
       "difficulty": "medium",
       "expect_allowed": true,
@@ -99,7 +99,7 @@
     }
   },
   {
-    "input": "Plan a 10-day honeymoon in Bali for two from 2099-08-01 to 2099-08-10, budget $5000.",
+    "input": "Plan a 10-day honeymoon in Bali for two from {d+120} to {d+129}, budget $5000.",
     "additional_metadata": {
       "difficulty": "difficult",
       "expect_allowed": true,
@@ -108,7 +108,7 @@
     }
   },
   {
-    "input": "Plan a 7-day trip to Tokyo for 4 people from 2099-03-01 to 2099-03-07 on a $500 budget.",
+    "input": "Plan a 7-day trip to Tokyo for 4 people from {d+65} to {d+71} on a $500 budget.",
     "additional_metadata": {
       "difficulty": "difficult",
       "expect_allowed": true,
@@ -117,7 +117,7 @@
     }
   },
   {
-    "input": "Plan a 4-day trip to Seoul from 2099-11-03 to 2099-11-06 for 3 friends, budget $2400. We want lots of street food.",
+    "input": "Plan a 4-day trip to Seoul from {d+85} to {d+88} for 3 friends, budget $2400. We want lots of street food.",
     "additional_metadata": {
       "difficulty": "difficult",
       "expect_allowed": true,
