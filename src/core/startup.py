@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+from urllib.parse import urlsplit
 
 from src.agents.runtime import close_graph, init_graph
 from src.core.config import settings
@@ -16,9 +17,36 @@ DB_CONNECT_ATTEMPTS = 10
 DB_CONNECT_DELAY_SECONDS = 2.0
 
 
+def _database_target(url: str) -> str:
+    """Return ``host:port/name`` for log lines. The user, the password and the query never leave."""
+    try:
+        parts = urlsplit(url)
+        host = parts.hostname or "unknown-host"
+        port = f":{parts.port}" if parts.port else ""
+        return f"{host}{port}{parts.path}"
+    except ValueError:
+        return "unparseable DATABASE_URL"
+
+
+def _connection_hint(url: str) -> str:
+    """Explain a private hostname used from outside its network, the usual managed-host mistake."""
+    try:
+        host = urlsplit(url).hostname or ""
+    except ValueError:
+        return ""
+    if host and "." not in host:
+        return (
+            " The host name has no domain, so it is a private (internal) address that only "
+            "resolves inside the same provider region and workspace. If this service runs "
+            "elsewhere, use the provider's external connection string instead."
+        )
+    return ""
+
+
 async def _connect_database() -> None:
     """Open the connection pool, retrying while the database is still starting."""
     last_error: Exception | None = None
+    target = _database_target(settings.database.url or "")
     for attempt in range(1, DB_CONNECT_ATTEMPTS + 1):
         try:
             await db_pool.init()
@@ -26,14 +54,15 @@ async def _connect_database() -> None:
         except Exception as e:
             last_error = e
             logger.warning(
-                f"Database not reachable (attempt {attempt}/{DB_CONNECT_ATTEMPTS}): "
+                f"Database not reachable (attempt {attempt}/{DB_CONNECT_ATTEMPTS}) at {target}: "
                 f"{type(e).__name__}",
                 extra={"component": "startup"},
             )
             if attempt < DB_CONNECT_ATTEMPTS:
                 await asyncio.sleep(DB_CONNECT_DELAY_SECONDS)
     raise RuntimeError(
-        f"Could not connect to the database after {DB_CONNECT_ATTEMPTS} attempts"
+        f"Could not connect to the database at {target} after {DB_CONNECT_ATTEMPTS} attempts."
+        f"{_connection_hint(settings.database.url or '')}"
     ) from last_error
 
 

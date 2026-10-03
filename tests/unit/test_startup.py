@@ -116,6 +116,48 @@ async def test_init_app_fails_fast_after_the_last_attempt(stubs, no_sleep):
 
 
 @pytest.mark.asyncio
+async def test_the_final_error_names_the_database_host_but_never_the_credentials(
+    stubs, no_sleep, monkeypatch
+):
+    monkeypatch.setattr(
+        startup.settings.database,
+        "url",
+        "postgresql://amith:s3cret@db.example.com:5432/app?sslmode=require",
+    )
+    stubs.init.side_effect = ConnectionError("down")
+
+    with pytest.raises(RuntimeError) as exc:
+        await startup.init_app()
+
+    message = str(exc.value)
+    assert "db.example.com:5432/app" in message
+    assert "s3cret" not in message and "amith" not in message and "sslmode" not in message
+    assert "private (internal) address" not in message
+
+
+@pytest.mark.asyncio
+async def test_a_private_host_name_gets_the_external_url_hint(stubs, no_sleep, monkeypatch):
+    monkeypatch.setattr(
+        startup.settings.database, "url", "postgresql://u:p@dpg-abc123-a/agentmemory"
+    )
+    stubs.init.side_effect = ConnectionError("down")
+
+    with pytest.raises(RuntimeError) as exc:
+        await startup.init_app()
+
+    assert "dpg-abc123-a/agentmemory" in str(exc.value)
+    assert "external connection string" in str(exc.value)
+
+
+def test_an_unparseable_url_never_raises_while_describing_the_target():
+    assert startup._database_target("postgresql://u:p@db.example.com:notaport/x") == (
+        "unparseable DATABASE_URL"
+    )
+    assert startup._database_target("postgresql://u:p@[broken/x") == "unparseable DATABASE_URL"
+    assert startup._connection_hint("postgresql://u:p@[broken/x") == ""
+
+
+@pytest.mark.asyncio
 async def test_init_app_requires_a_database_url(stubs, monkeypatch):
     monkeypatch.setattr(startup.settings.database, "url", None)
 
