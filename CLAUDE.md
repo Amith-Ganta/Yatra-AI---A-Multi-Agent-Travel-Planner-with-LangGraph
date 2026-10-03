@@ -61,10 +61,12 @@ pytest tests/unit -q                              # no database needed
 cd frontend && npx tsc --noEmit && npm run build
 ```
 
-The last full local run (Windows, PostgreSQL 17, `requirements-eval.txt`): 394 tests passed
-(357 unit and 37 integration), 91.30% coverage. On GitHub, `CI Pipeline` and `Verify` passed on commit
-808083d. `agent-evals` ran once by hand and failed before scoring (a key with a trailing newline, and
-2099 dates); both are fixed and no passing run is recorded yet. Without DeepEval installed,
+The last full local run (Windows, PostgreSQL 17, `requirements-eval.txt`): 397 tests passed
+(360 unit and 37 integration), 91.30% coverage. On GitHub, `CI Pipeline` and `Verify` passed on commit
+808083d. `agent-evals` ran by hand twice. The first run failed before scoring (a key with a trailing
+newline, and 2099 dates). The second produced the first live scores and failed the original
+gate (one golden mislabelled, two DeepEval plan metrics scoring low); both were changed after
+that run (`specs/07-evals.spec.md`, section 8.7), and no passing run is recorded yet. Without DeepEval installed,
 `tests/unit/test_eval_suite.py` skips itself.
 
 ### Agent evals (need real keys, not part of the tests)

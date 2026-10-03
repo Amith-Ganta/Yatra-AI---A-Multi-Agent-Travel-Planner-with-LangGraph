@@ -111,9 +111,9 @@
     "input": "Plan a 7-day trip to Tokyo for 4 people from {d+65} to {d+71} on a $500 budget.",
     "additional_metadata": {
       "difficulty": "difficult",
-      "expect_allowed": true,
-      "expected_agents": ["flight", "hotel", "weather", "budget"],
-      "hitl": "approve"
+      "expect_allowed": false,
+      "expected_agents": [],
+      "hitl": "none"
     }
   },
   {

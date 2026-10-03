@@ -113,7 +113,7 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
 
 - **Lint and types:** ruff and black (line length 100) on `src tests evals .github/scripts`, and
   pyright in strict mode on `src`.
-- **Tests:** 394 tests (357 unit, 37 integration), 91.30% line coverage in the last full run. The
+- **Tests:** 397 tests (360 unit, 37 integration), 91.30% line coverage in the last full run. The
   integration tests need PostgreSQL. See `06-tests`.
 - **CI:** `.github/workflows/ci.yml` runs lint, tests against a Postgres service and a Docker
   image build. `verify.yml` builds the compose stack, checks `/ready` and `/health`, runs the unit
@@ -122,8 +122,9 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
   (Task Completion, Plan Quality, Plan Adherence, a custom plan judge) and three code checks
   (guardrail, routing, approval loop). `.github/scripts/eval_gate.py` turns the summary into an
   exit code, and the `agent-evals` job in `ci.yml` calls both on a pull request. The job skips
-  without API keys, and it blocks a merge only after it is made a required status check. **No live
-  score exists yet.** The older request-time judges in `src/evals/` (safety 0.95, factuality 0.90,
+  without API keys, and it blocks a merge only after it is made a required status check. **One live
+  run exists** (3 Oct 2026): it failed the original gate, one golden was relabelled and two
+  DeepEval plan metrics were made report only (`07-evals`, section 8.7). The older request-time judges in `src/evals/` (safety 0.95, factuality 0.90,
   budget 0.95) are plain prompts, are not wired into the graph and are not used by CI. See
   `07-evals` and `08-gate-ci`.
 
@@ -136,8 +137,9 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
 - The Docker image has not been built on the author's machine, and the application has not been
   run with a real LLM key from the browser. Both are covered by tests with fakes and by CI.
 - SSE on Render's free tier is unverified.
-- No live eval score has been recorded. The agent evals and the gate script are tested without a
-  model and wired into CI. The one manual run with real keys failed before scoring (see section 7).
+- No passing eval gate has been recorded. The one live run (3 Oct 2026) failed the original gate,
+  and the gate was revised after it (see section 7). A re-run on the revised gate is not recorded
+  here unless `07-evals`, section 8.7 says so.
 - The model fallback chain has not been exercised against real providers.
 - On GitHub Actions, `CI Pipeline` and `Verify` passed on commit 808083d. The fixes made after it
   (key cleaning, dated goldens) have not been seen there yet.

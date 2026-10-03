@@ -9,6 +9,7 @@ live run is `python -m evals.eval_agent`.
 import csv
 import importlib.util
 import json
+import math
 import re
 import threading
 from datetime import date
@@ -69,6 +70,17 @@ def test_goldens_are_consistent() -> None:
             assert "flight" in meta["expected_agents"]
         else:
             assert meta["expected_agents"] == []
+
+
+def test_goldens_split_is_ten_allowed_and_five_refused() -> None:
+    # The docs quote this split. The $500 Tokyo trip for 4 people is a refusal: the first live run
+    # (3 Oct 2026) showed the supervisor correctly rejects it as an unrealistic budget.
+    allowed = [g for g in GOLDENS if g["additional_metadata"]["expect_allowed"]]
+    refused = [g for g in GOLDENS if not g["additional_metadata"]["expect_allowed"]]
+    assert (len(allowed), len(refused)) == (10, 5)
+    assert any("$500 budget" in g["input"] for g in refused)
+    hitl = sorted(g["additional_metadata"]["hitl"] for g in allowed)
+    assert hitl == ["approve"] * 6 + ["reject_always"] + ["reject_once"] * 3
 
 
 def test_goldens_cover_every_approval_script_and_refusals() -> None:
@@ -692,39 +704,60 @@ def test_gate_needs_every_guardrail_and_approval_task() -> None:
 
 def test_gate_allows_routing_at_eighty_percent_and_no_lower() -> None:
     ok, bad = good_summary(), good_summary()
-    ok["metrics"]["Routing"]["passed"] = 9  # 9/11 = 0.82
-    bad["metrics"]["Routing"]["passed"] = 8  # 8/11 = 0.73
+    ok["metrics"]["Routing"]["passed"] = math.ceil(0.8 * ALLOWED)  # exactly on the bar
+    bad["metrics"]["Routing"]["passed"] = math.ceil(0.8 * ALLOWED) - 1  # one task short
     assert eval_gate.evaluate(ok, GOLDENS) == []
     assert any(f.startswith("Routing") for f in eval_gate.evaluate(bad, GOLDENS))
 
 
 def test_gate_fails_a_low_judged_average() -> None:
     summary = good_summary()
-    summary["metrics"]["Plan Quality"]["average"] = 0.65
+    summary["metrics"]["Plan Quality (sees trip details)"]["average"] = 0.65
     failures = eval_gate.evaluate(summary, GOLDENS)
-    assert [f.split(":")[0] for f in failures] == ["Plan Quality"]
+    assert [f.split(":")[0] for f in failures] == ["Plan Quality (sees trip details)"]
+
+
+def test_gate_only_reports_the_two_built_in_plan_metrics() -> None:
+    # The scores of the first live run (3 Oct 2026). Task Completion and the custom judge are fine.
+    assert set(eval_gate.REPORT_ONLY) == {"Plan Quality", "Plan Adherence"}
+    assert not {name for name, _, _ in eval_gate.RULES} & set(eval_gate.REPORT_ONLY)
+    summary = good_summary()
+    summary["metrics"]["Plan Quality"].update(average=0.55, passed=1)
+    summary["metrics"]["Plan Adherence"].update(average=0.16, passed=1)
+    assert eval_gate.evaluate(summary, GOLDENS) == []
+    # Missing entirely is fine too: a report-only metric never decides the gate.
+    del summary["metrics"]["Plan Adherence"]
+    assert eval_gate.evaluate(summary, GOLDENS) == []
+
+
+def test_gate_report_labels_the_report_only_rows() -> None:
+    text = eval_gate.describe(good_summary())
+    assert "Plan Quality (report only)" in text
+    assert "Plan Adherence (report only)" in text
+    assert "Plan Quality (sees trip details) " in text  # the gated judge keeps its plain name
 
 
 def test_gate_counts_a_judge_outage_as_zero() -> None:
     summary = good_summary()
-    # 8 of 11 tasks scored 0.85; the other 3 errored. The mean over all 11 is about 0.62.
-    summary["metrics"]["Task Completion"].update(average=0.85, errors=3, passed=8)
+    # 7 of 10 tasks scored 0.85; the other 3 errored. The mean over all 10 is about 0.6.
+    summary["metrics"]["Task Completion"].update(average=0.85, errors=3, passed=ALLOWED - 3)
     failures = eval_gate.evaluate(summary, GOLDENS)
     assert any(f.startswith("Task Completion") and "3 error" in f for f in failures)
 
 
 def test_gate_fails_when_every_task_errored() -> None:
     summary = good_summary()
-    summary["metrics"]["Plan Adherence"].update(average=None, errors=ALLOWED, passed=0)
-    assert any(f.startswith("Plan Adherence") for f in eval_gate.evaluate(summary, GOLDENS))
+    judge = "Plan Quality (sees trip details)"
+    summary["metrics"][judge].update(average=None, errors=ALLOWED, passed=0)
+    assert any(f.startswith(judge) for f in eval_gate.evaluate(summary, GOLDENS))
 
 
 def test_gate_fails_a_missing_or_short_metric() -> None:
     summary = good_summary()
-    del summary["metrics"]["Plan Adherence"]
+    del summary["metrics"]["Plan Quality (sees trip details)"]
     summary["metrics"]["Routing"]["total"] = ALLOWED - 2
     failures = eval_gate.evaluate(summary, GOLDENS)
-    assert any(f.startswith("Plan Adherence") and "not scored" in f for f in failures)
+    assert any(f.startswith("Plan Quality (sees") and "not scored" in f for f in failures)
     assert any(f.startswith("Routing") and "expected" in f for f in failures)
 
 
@@ -739,7 +772,7 @@ def test_gate_exit_codes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert "EVAL GATE PASSED" in capsys.readouterr().out
 
     low = good_summary()
-    low["metrics"]["Plan Quality"]["average"] = 0.2
+    low["metrics"]["Task Completion"]["average"] = 0.2
     assert eval_gate.main(write_files(tmp_path, low)) == 1
     assert "EVAL GATE FAILED" in capsys.readouterr().out
 

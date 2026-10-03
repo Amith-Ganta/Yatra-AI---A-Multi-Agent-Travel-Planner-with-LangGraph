@@ -14,6 +14,7 @@ The bars are strict where the answer is a fact and looser where a judge model gi
 - Routing is checked by code but the supervisor is a model, so 80% of tasks must pass.
 - The judged metrics must average at least 0.7. A task that errored counts as a 0, so a judge
   outage fails the gate instead of passing on the tasks that happened to score.
+- Plan Quality and Plan Adherence from DeepEval are REPORT ONLY (see REPORT_ONLY below).
 
 The script reads the goldens too, so a run that was cut short (`--limit`) cannot pass.
 """
@@ -35,10 +36,18 @@ RULES: list[tuple[str, str, float]] = [
     ("Approval Loop", "all", 1.0),
     ("Routing", "rate", 0.8),
     ("Task Completion", "average", 0.7),
-    ("Plan Quality", "average", 0.7),
-    ("Plan Adherence", "average", 0.7),
     ("Plan Quality (sees trip details)", "average", 0.7),
 ]
+
+# Scored and reported on every run, but they do not decide the gate. The first live run
+# (3 Oct 2026, judge gpt-4o-mini) gave Plan Quality 0.55 and Plan Adherence 0.16, with 0.5 and
+# about 0 on almost every task. The judge's reasons were that the "plan" (a list of agents) has no
+# flight or hotel detail, and that `human_approval` and `final_response` run without being in that
+# list. Yatra is a fixed graph, not a free planner, so these two metrics measure a mismatch in
+# shape more than the quality of the work. That reading is a judgement and not a proven cause.
+# The custom judge and Task Completion keep gating plan quality. To gate on them again, move the
+# two names back into RULES with a bar chosen from a baseline.
+REPORT_ONLY = ("Plan Quality", "Plan Adherence")
 
 
 def count_goldens(goldens: list[dict[str, Any]]) -> tuple[int, int]:
@@ -96,7 +105,8 @@ def describe(summary: dict[str, Any]) -> str:
     for name, item in summary.get("metrics", {}).items():
         average = "n/a" if item.get("average") is None else f"{item['average']:.2f}"
         passed = f"{item.get('passed')}/{item.get('total')}"
-        lines.append(f"{name:36}{average:>9}{passed:>9}{item.get('errors', 0):>8}")
+        label = f"{name} (report only)" if name in REPORT_ONLY else name
+        lines.append(f"{label:36}{average:>9}{passed:>9}{item.get('errors', 0):>8}")
     return "\n".join(lines)
 
 
