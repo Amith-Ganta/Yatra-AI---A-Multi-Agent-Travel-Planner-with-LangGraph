@@ -188,7 +188,7 @@ flowchart LR
     class WEB,API,PG,MCP todo;
 ```
 
-Purple dashed means "prepared, not deployed yet". [`render.yaml`](render.yaml) is a Render Blueprint for the database, the API and the frontend, and the frontend also works on Vercel. [`DEPLOYMENT.md`](DEPLOYMENT.md) has the environment variables, the order of operations and a post-deploy checklist. Two things to know before you deploy:
+Purple dashed means "prepared, not deployed yet". [`render.yaml`](render.yaml) is a Render Blueprint for the API and the frontend (it reuses an existing Render PostgreSQL), and the frontend also works on Vercel. [`DEPLOYMENT.md`](DEPLOYMENT.md) has the environment variables, the order of operations and a post-deploy checklist. Two things to know before you deploy:
 
 - The API allows only `localhost:3000` by default, so a deployed frontend needs `CORS_ORIGINS` set.
 - The three MCP servers live inside the API's container, so one small web service runs four Python processes. I measured about 60 MB for each server and estimate about 290 MB in total, which is close to the 512 MB of a free Render instance. If it restarts for lack of memory, set `MCP_ENABLED=false` and the same tools run inside the API process.
@@ -510,7 +510,7 @@ docs/           AUDIT.md, BLOCKED.md and the build trail
 .mcp.json       the same three servers, for any MCP client such as Claude Code
 requirements-eval.txt  requirements.txt plus deepeval, for the test and eval jobs
 DEPLOYMENT.md   environment variables, Render, Vercel, container host, checklist
-render.yaml     Render Blueprint: PostgreSQL, API (Docker) and frontend (Node)
+render.yaml     Render Blueprint: API (Docker) and frontend (Node), on an existing PostgreSQL
 verify.sh       the definition of done, in 3 tiers
 ```
 

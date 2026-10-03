@@ -117,12 +117,13 @@ Each instance also starts its own set of MCP child processes. Two instances mean
 
 ## 5. Deploy everything on Render (Blueprint)
 
-The repo has a `render.yaml` Blueprint that creates three resources in one go: a PostgreSQL database (`yatra-ai-db`), the API (`yatra-ai-api`, built from the `Dockerfile`) and the frontend (`yatra-ai-web`, a Node service built from `frontend/`). All three use the free plan and the Frankfurt region. Change `plan` and `region` in the file if you want something else.
+The repo has a `render.yaml` Blueprint that creates two services in one go: the API (`yatra-ai-api`, built from the `Dockerfile`) and the frontend (`yatra-ai-web`, a Node service built from `frontend/`). Both use the free plan and the Virginia region. The Blueprint does **not** create a database. It reuses the PostgreSQL instance that already exists in the workspace (`Yatra-Agent`, Virginia), because Render allows only one free database per workspace and a second one is refused. The services have to be in the same region as that database, because its Internal Database URL only works inside one region. If you want the Blueprint to create its own database instead, add a `databases:` block (`name`, `plan`, `region`, `databaseName`, `user`) and set `DATABASE_URL` to `fromDatabase` with `property: connectionString`, and use the same region everywhere.
 
 The API and the frontend each need the other's public URL, and Render only shows a service's URL after it exists. The simplest way is to give the services the names in the Blueprint and use the predictable addresses, then check them:
 
 1. Push the repository to GitHub.
 2. In Render, choose **New > Blueprint**, connect the repository and click **Apply**. The Blueprint also sets `LLM_RUNTIME_MODEL=deepseek:deepseek-flash` and `LLM_FALLBACK_MODELS=openai:gpt-4.1-mini,deepseek:deepseek-flash` for you, and you can change both later in the dashboard without a code change. Render asks for the values marked `sync: false`:
+   - `DATABASE_URL`: the **Internal Database URL** of the `Yatra-Agent` database. Open the database in the dashboard, go to **Connections** and copy the Internal Database URL. The API accepts `postgres://` and `postgresql://`. The app was tested on PostgreSQL 15 and 17, and this instance is PostgreSQL 18, which has not been tried. `/ready` answers 503 until the database responds, so a problem shows up there first.
    - `DEEPSEEK_API_KEY`: your DeepSeek key.
    - `OPENAI_API_KEY`: your OpenAI key. It is the fallback model's key. If you have none, delete the `OPENAI_API_KEY` entry from `render.yaml` before you apply the Blueprint. Do not type a fake value: a fake key makes the fallback fail with a 401 instead of being skipped.
    - `CORS_ORIGINS`: the frontend's address, `https://yatra-ai-web.onrender.com`. No trailing slash.
@@ -137,7 +138,7 @@ The API and the frontend each need the other's public URL, and Render only shows
 What to expect on the free plan:
 
 - A free web service goes to sleep after about 15 minutes without traffic and needs roughly a minute to wake up. The first request after a pause is slow, and a visitor can see a loading screen from Render.
-- A free PostgreSQL database expires 30 days after it is created. Upgrade it before then, or you lose the trips stored in it. A workspace can have only one free database.
+- A free PostgreSQL database expires 30 days after it is created. Check the plan and the creation date of `Yatra-Agent` on its Info page, and upgrade it before the expiry date, or you lose the trips stored in it. A workspace can have only one free database.
 - The free web service has 512 MB of memory. This is the tightest limit for this app. The API process alone used about 107 MB after start-up in an earlier measurement, before the MCP servers existed. Each MCP server is a separate Python process, and the three that were measured used roughly 58 to 64 MB each. That adds up to about 290 MB in total. It is an estimate from a Windows machine, not a measurement on Render or on Linux, and not under load. It should fit, but it has not been confirmed. If the service restarts with out-of-memory messages in the logs, set `MCP_ENABLED=false`. The same tools then run inside the API process and the three child processes disappear.
 - Whether a free service keeps a long Server-Sent Events stream open for the whole plan run (up to a few minutes) is not documented, and I did not test it. If progress stops halfway, look at the API logs first, then try a paid plan.
 - Render does not use the `HEALTHCHECK` line in the `Dockerfile`. It uses `healthCheckPath: /ready` from the Blueprint, and it injects `PORT`, which the API reads. Do not set `APP_PORT` there, because it would win over `PORT`.
