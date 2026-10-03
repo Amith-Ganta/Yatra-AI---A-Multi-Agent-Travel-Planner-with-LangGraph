@@ -122,9 +122,9 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
   (Task Completion, Plan Quality, Plan Adherence, a custom plan judge) and three code checks
   (guardrail, routing, approval loop). `.github/scripts/eval_gate.py` turns the summary into an
   exit code, and the `agent-evals` job in `ci.yml` calls both on a pull request. The job skips
-  without API keys, and it blocks a merge only after it is made a required status check. **One live
-  run exists** (3 Oct 2026): it failed the original gate, one golden was relabelled and two
-  DeepEval plan metrics were made report only (`07-evals`, section 8.7). The older request-time judges in `src/evals/` (safety 0.95, factuality 0.90,
+  without API keys, and it blocks a merge only after it is made a required status check. **Two live
+  runs exist** (3 Oct 2026): the first failed the original gate, so one golden was relabelled and two
+  DeepEval plan metrics were made report only. The second passed the revised gate (`07-evals`, section 8.7). The older request-time judges in `src/evals/` (safety 0.95, factuality 0.90,
   budget 0.95) are plain prompts, are not wired into the graph and are not used by CI. See
   `07-evals` and `08-gate-ci`.
 
@@ -137,12 +137,12 @@ any other id is "unknown". The reason is cost and reproducibility. Details are i
 - The Docker image has not been built on the author's machine, and the application has not been
   run with a real LLM key from the browser. Both are covered by tests with fakes and by CI.
 - SSE on Render's free tier is unverified.
-- No passing eval gate has been recorded. The one live run (3 Oct 2026) failed the original gate,
-  and the gate was revised after it (see section 7). A re-run on the revised gate is not recorded
-  here unless `07-evals`, section 8.7 says so.
-- The model fallback chain has not been exercised against real providers.
-- On GitHub Actions, `CI Pipeline` and `Verify` passed on commit 808083d. The fixes made after it
-  (key cleaning, dated goldens) have not been seen there yet.
+- The eval gate has passed once, and only on the version that I revised after the first live run
+  (see section 7 and `07-evals`, section 8.7). The spread between runs is not measured.
+- The model fallback chain has never been seen switching to a second provider. The live eval runs
+  made real model calls through it, but the logs do not record which model answered.
+- On GitHub Actions, `CI Pipeline` and `Verify` passed on commit 07a4dc0, which includes the key
+  cleaning and the dated goldens.
 
 ## 9. Conventions
 

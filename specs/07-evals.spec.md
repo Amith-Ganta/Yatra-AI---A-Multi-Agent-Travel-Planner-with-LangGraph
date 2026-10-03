@@ -9,9 +9,10 @@
 2. **Agent evals with DeepEval** (`evals/` at the repository root, section 8). They run the real
    LangGraph agent against a golden dataset and score each run. They follow the structure of the
    `campusx-official/agent-evals-deepeval` reference repository. A merge gate
-   (`.github/scripts/eval_gate.py`) and a CI job (`agent-evals`) are wired to them. **No live
-   score from a real judge model has been recorded for this repository yet** (section 8.7). The one
-   manual CI run failed before scoring, for two bugs that are fixed.
+   (`.github/scripts/eval_gate.py`) and a CI job (`agent-evals`) are wired to them. **Two live
+   runs with a real judge model are recorded** (section 8.7): the first failed the original gate and
+   the second passed the revised gate. An earlier manual run failed before scoring, for two bugs that
+   are fixed.
 
 The first version of this file (2026-09-29) described an `eval_gate` graph node, scores kept in
 the graph state and a CI gate that blocks merges. None of that exists, and it is gone.
@@ -247,7 +248,8 @@ approval step. The 10 allowed tasks use 6 `approve`, 3 `reject_once` and 1 `reje
 a $500 budget" started as an allowed request. The supervisor refused it as an unrealistic
 budget, which is the right answer, so the golden is now a refusal. The label was changed after
 seeing the result, and that is a decision to be aware of: the dataset was corrected to match
-correct behaviour, not the behaviour changed to match the dataset.
+correct behaviour, not the behaviour changed to match the dataset. The second live run (section
+8.7) confirms the effect: Guardrail passed 15 of 15.
 
 | Script | The traveller does | The plan must end as |
 |---|---|---|
@@ -269,7 +271,8 @@ correct behaviour, not the behaviour changed to match the dataset.
 
 **Why the two built-in plan metrics do not gate.** They did have a 0.7 bar at first. The first
 live run (3 Oct 2026, judge `gpt-4o-mini`) gave Plan Quality 0.55 and Plan Adherence 0.16, with
-0.5 and close to 0 on almost every task. The judge's stated reasons were that the plan (a list of
+0.5 and close to 0 on almost every task. The second run (section 8.7) gave 0.50 and 0.05, and
+none of the 10 tasks passed either metric. The judge's stated reasons were that the plan (a list of
 agents) has no flight or hotel detail, and that `human_approval` and `final_response` ran
 without being in that list. Yatra is a fixed graph and not a free planner, so my reading is
 that these two metrics measure a mismatch in shape more than the quality of the work. That is
@@ -321,7 +324,7 @@ A task that errored counts as a 0 in an average, so a judge outage fails the gat
 pass on the tasks that happened to be scored. `--allow-skip` turns "no summary" into a pass. CI
 uses it only when the API keys are missing (`08-gate-ci`, section 3).
 
-### 8.7 Tests, the first live run, and what is verified
+### 8.7 Tests, the live runs, and what is verified
 
 **First live run.** 3 Oct 2026, GitHub Actions run 37141451793 (manual, `workflow_dispatch`) on commit
 `473637f`. Judge `gpt-4o-mini`, flights from fixtures, 15 tasks, **the dataset as it was then**
@@ -350,6 +353,33 @@ errored. The gate failed on real scores:
   question than the built-in metrics, so it does not make them wrong.
 - This is one run. It says nothing about run-to-run spread.
 
+**Second live run.** 3 Oct 2026, GitHub Actions run 37143852885 (manual, `workflow_dispatch`) on commit
+`07a4dc0`. Judge `gpt-4o-mini`, flights from fixtures, 15 tasks, **the revised dataset** (10 allowed,
+5 refused) and the revised gate. No metric errored. The gate passed (exit code 0):
+
+| Metric | Second live result |
+|---|---|
+| Guardrail | 15 of 15 passed |
+| Routing | 10 of 10 passed |
+| Approval Loop | 10 of 10 passed |
+| Task Completion (DeepEval) | average 0.965, 10 of 10 passed |
+| Plan Quality (DeepEval, report only) | average 0.50, 0 of 10 passed |
+| Plan Adherence (DeepEval, report only) | average 0.05, 0 of 10 passed |
+| Plan Quality that sees trip details (custom judge) | average 0.976, 10 of 10 passed |
+
+- The Tokyo task is now a refusal and is scored on Guardrail only. That removes the single misses
+  of the first run and gives the 10-task denominators in the other rows. Task Completion is
+  averaged over the 10 allowed tasks only, so the earlier 0.87, which included the failed Tokyo
+  task, is not comparable with 0.965.
+- DeepEval Plan Quality and Plan Adherence passed none of the 10 tasks. The first run's
+  "1 of 11" was the Tokyo task with no plan in the trace, so that pass was vacuous. This fits
+  the shape-mismatch reading in section 8.3 but does not prove it. They stay report only.
+- This pass came on a dataset and a gate that I revised after seeing the first run. It shows that
+  the revised version agrees with itself. It does not show that the original bars were met.
+- It is one run, so the spread between runs is still unknown. The job's `Check for API keys` step
+  warned that the `OPENAI_API_KEY` secret has trailing whitespace. The code strips it, so the run
+  was not affected.
+
 **Tests.**
 
 `tests/unit/test_eval_suite.py` has 74 tests and no network call (it skips itself when DeepEval
@@ -363,13 +393,15 @@ refusal.
 | The wiring: real graph, real DeepEval iterator, interrupt and resume in one trace | A run with a stub judge (a plumbing check, never a score) |
 | The gate refuses a stub summary | Exit code 2, covered by a test |
 | The gate logic | 74 unit tests (the whole file), plus a mutation check (breaking a rule made a test fail) |
+| The revised gate on real scores | One passing manual run (run 37143852885), with the hindsight caveat above |
 
 | **Not** verified | Why |
 |---|---|
-| A passing gate on the revised dataset and rules | The live run below failed the original gate. The dataset and the gate were changed after it, and a run on the new version is only recorded below if one is listed. |
-| That DeepEval's Plan Quality and Plan Adherence extract a sensible plan from the Yatra trace | They scored 0.55 and 0.16. I read that as a shape mismatch, which is a judgement and not a proven cause. |
+| That the gate passes reliably | One run passed the revised gate. The spread between runs is unknown, and the dataset and the rules were revised after the first run. |
+| That DeepEval's Plan Quality and Plan Adherence extract a sensible plan from the Yatra trace | They scored 0.55 and 0.16, then 0.50 and 0.05. I read that as a shape mismatch, which is a judgement and not a proven cause. |
 | That the plan judge separates good plans from bad ones | `check_plan_judge` has not run on a real model |
-| That the 0.7 bars are right for this agent | The numbers in the reference repository belong to a different agent. One baseline exists (below), from a single run, so run-to-run spread is unknown. |
+| That the 0.7 bars are right for this agent | The numbers in the reference repository belong to a different agent. Two baselines exist (above), from single runs on two versions of the dataset, so run-to-run spread is unknown. |
+| Which model answered in the live runs | The chain only catches calls that raise and does not log a switch, so the report cannot show whether `deepseek-flash` or the OpenAI fallback replied. |
 
 Reports in `evals/reports/` and traces in `evals/traces/` are gitignored. A report written by a
 stub run must never be presented as a result.

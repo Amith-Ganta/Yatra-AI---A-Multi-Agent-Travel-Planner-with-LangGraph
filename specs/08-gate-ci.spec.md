@@ -3,9 +3,10 @@
 **Version:** 3.0
 **Status:** Two GitHub Actions workflows exist. `ci.yml` has four jobs, one of which
 (`agent-evals`) runs the DeepEval agent evals and the real merge gate script. The workflows are
-checked locally and on GitHub. On commit 808083d `CI Pipeline` (lint, test, Docker build) and
-`Verify` passed. `agent-evals` skips on a push; its first manual run **failed before scoring**
-(a key with a trailing newline, and 2099 dates), and both causes are fixed. The first version of this file (2026-09-29) said that the gate was a graph
+checked locally and on GitHub. On commit 07a4dc0 `CI Pipeline` (lint, test, Docker build) and
+`Verify` passed. `agent-evals` skips on a push. It has three manual runs: the first **failed before
+scoring** (a key with a trailing newline, and 2099 dates, both fixed), the second scored for real
+and failed the original gate, and the third passed the revised gate. The first version of this file (2026-09-29) said that the gate was a graph
 node and that failing evals blocked a merge. The second version said that no workflow called the
 gate. Both are out of date.
 **Dependencies:** `06-tests` (what the test jobs run) and `07-evals` (the agent evals and the
@@ -43,8 +44,8 @@ flowchart LR
 - This file says what the workflows do. It does not say that anything blocks a merge: that
   depends on branch protection rules in the GitHub settings, which are not in the repository
   (section 4).
-- Only one workflow result is quoted: the first live `agent-evals` run (`07-evals`, section 8.7). No
-  run of the revised gate is quoted unless that section lists it.
+- Only the two scored `agent-evals` runs are quoted, both in `07-evals`, section 8.7: the first failed
+  the original gate and the second passed the revised gate.
 
 ---
 
@@ -145,10 +146,10 @@ can never produce a summary that looks real.
 | 2 | Nothing trustworthy to judge: no summary (without `--allow-skip`), a summary from a stub judge, a run that did not cover every golden, or a metric that was not scored for the expected number of tasks |
 
 The strict bars are for facts that code checks. The 0.7 bar is for scores that a judge model gives.
-**The 0.7 bar and the 80% routing bar were set before any live run.** One live run has happened
-(3 Oct 2026). It failed the original gate, which led to one golden being relabelled and to two
-DeepEval metrics becoming report only. That is a single run, so the bars have no measured
-spread yet (`07-evals`, section 8.7).
+**The 0.7 bar and the 80% routing bar were set before any live run.** Two scored runs have happened
+(3 Oct 2026). The first failed the original gate, which led to one golden being relabelled and to two
+DeepEval metrics becoming report only. The second passed the revised gate. Each is a single run, so
+the bars have no measured spread yet (`07-evals`, section 8.7).
 
 ## 4. What is needed for the gate to block a merge
 
@@ -160,19 +161,20 @@ The gate is wired into a job. The job blocks a merge only if all of these are tr
 | 2. Run the evals once on a pull request and read the report | The owner. Check that the scores make sense and set the bars from them. |
 | 3. Make the `agent-evals` job a required status check in the branch protection rules for `main` | The owner. This is a GitHub setting and not a file in the repository. |
 
-The secrets in step 1 exist, and one live run has happened. The honest statement is: the agent evals
-and a merge gate are built, tested without a model, wired into CI, and have scored the agent once,
-failing the original gate. "Evals
+The secrets in step 1 exist, and two scored runs have happened. The honest statement is: the agent evals
+and a merge gate are built, tested without a model, wired into CI, and have scored the agent twice,
+failing the original gate once and passing the revised one once. "Evals
 gate the merge" becomes true after step 3.
 
 ## 5. Other gaps in the pipeline
 
-- **Only part of the pipeline has been seen working on GitHub.** On commit 808083d, the `lint`,
-  `test` and `build` jobs of `ci.yml` and all of `verify.yml` passed. The `agent-evals` job has no
-  passing run: its first manual run failed on a key stored with a trailing newline (`Illegal header
-  value`) and on goldens dated 2099, which the supervisor refuses. Its second run (commit
-  `473637f`, run 37141451793) scored for real and failed the original gate. The fixes and the revised
-  gate are checked locally (397 tests, 91.30% coverage, `06-tests`).
+- **Most of the pipeline has been seen working on GitHub.** On commit 07a4dc0, the `lint`,
+  `test` and `build` jobs of `ci.yml` and all of `verify.yml` passed. The `agent-evals` job has three
+  manual runs and has never run on a pull request. The first failed on a key stored with a trailing
+  newline (`Illegal header value`) and on goldens dated 2099, which the supervisor refuses. The second
+  (commit `473637f`, run 37141451793) scored for real and failed the original gate. The third (commit
+  `07a4dc0`, run 37143852885) passed the revised gate. The `Check for API keys` step still warns that
+  the `OPENAI_API_KEY` secret has trailing whitespace. The code strips it, so the runs are not affected.
 - **A skipped eval run is green.** See section 3, step 4. Look for the notice in the job log.
 - **The eval judges are `gpt-4o-mini`.** A change of the judge model changes the scores, so a
   comparison between two runs needs the same `judge_model` field in the summary.

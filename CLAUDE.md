@@ -33,9 +33,9 @@ PostgreSQL. A Next.js frontend sits in front of it.
 
 **What is not built (do not claim it):** real flight prices (flights are sample data), an LLM-written
 first itinerary draft (it is a template), login or rate limiting, trip deletion through the API,
-a live eval score (the agent evals have not completed a scored run with real API keys), a merge that is actually
+a gate that has passed more than once (two scored runs exist, and the second passed the revised gate), a merge that is actually
 blocked by the gate (that needs the repository secrets and a required status check, see
-`DEPLOYMENT.md` section 11), a fallback that has been tried against real providers.
+`DEPLOYMENT.md` section 11), a fallback chain that has been seen switching to a second provider.
 
 ## Commands
 
@@ -63,10 +63,11 @@ cd frontend && npx tsc --noEmit && npm run build
 
 The last full local run (Windows, PostgreSQL 17, `requirements-eval.txt`): 397 tests passed
 (360 unit and 37 integration), 91.30% coverage. On GitHub, `CI Pipeline` and `Verify` passed on commit
-808083d. `agent-evals` ran by hand twice. The first run failed before scoring (a key with a trailing
+07a4dc0. `agent-evals` ran by hand three times. The first run failed before scoring (a key with a trailing
 newline, and 2099 dates). The second produced the first live scores and failed the original
 gate (one golden mislabelled, two DeepEval plan metrics scoring low); both were changed after
-that run (`specs/07-evals.spec.md`, section 8.7), and no passing run is recorded yet. Without DeepEval installed,
+that run. The third (run 37143852885, commit 07a4dc0) passed the revised gate
+(`specs/07-evals.spec.md`, section 8.7). Without DeepEval installed,
 `tests/unit/test_eval_suite.py` skips itself.
 
 ### Agent evals (need real keys, not part of the tests)
@@ -172,5 +173,5 @@ idempotent.
 
 The target is Render (`render.yaml`, then `DEPLOYMENT.md`). Do not create cloud resources, push
 or deploy without being asked. The Docker image has not been built on the author's machine, and
-the app has not been run with a real LLM, so neither the fallback chain nor the agent evals have
-been seen working against a real provider.
+the app has not been run with a real LLM from the browser. The agent evals have run live twice, but
+the fallback chain has never been seen switching to a second provider.

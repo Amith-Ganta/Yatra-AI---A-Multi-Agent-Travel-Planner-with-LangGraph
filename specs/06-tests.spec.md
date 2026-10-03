@@ -20,8 +20,8 @@ The last full run, with a real PostgreSQL available, gave:
 | Time | about 217 seconds for the full run |
 | Where | A Windows 10 machine, Python 3.11, a throwaway local PostgreSQL 17 on port 55432, with `requirements-eval.txt` installed |
 
-That run was local. On GitHub Actions the suite passed on commit 808083d (PostgreSQL 15, a fresh
-install, `08-gate-ci`); the changes made after that commit have not run there yet. Without DeepEval
+That run was local. On GitHub Actions the suite passed on commit 07a4dc0 (PostgreSQL 15, a fresh
+install, `08-gate-ci`), which includes the key-cleaning and date changes. Without DeepEval
 installed, the 74 tests of
 `test_eval_suite.py` skip themselves and the rest run as before.
 
@@ -236,10 +236,11 @@ measured. Its behaviour is checked by `test_eval_suite.py` (section 3).
   `deepseek-flash` model name are checked against the provider's documentation and not against a
   live reply.
 - The DeepEval agent-eval suite is tested without a model (a stub judge and the real graph, plus
-  unit tests of every helper and of the gate). **One live run exists** (3 Oct 2026, `07-evals`,
-  section 8.7): it failed the original gate and the gate was revised after it. These tests do not call a model.
+  unit tests of every helper and of the gate). **Two live runs exist** (3 Oct 2026, `07-evals`,
+  section 8.7): the first failed the original gate and the gate was revised after it, and the second
+  passed the revised gate. These tests do not call a model.
 - The coverage figure comes from a local run (Windows, PostgreSQL 17). CI uses PostgreSQL 15 and passed on
-  commit 808083d, before the key-cleaning and date changes (`08-gate-ci`).
+  commit 07a4dc0, which includes the key-cleaning and date changes (`08-gate-ci`).
 - The frontend has no automated tests. It is only checked by `next build`, which includes the
   TypeScript type check, in the `verify.yml` workflow. That workflow deletes the lockfile before
   it installs (`10-frontend`). `ci.yml` has no frontend step.
