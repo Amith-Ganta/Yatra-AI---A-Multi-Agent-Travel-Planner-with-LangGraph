@@ -142,3 +142,6 @@ evals/traces/
 
 # DeepEval writes its last test run here (several MB, regenerated on every run)
 .deepeval/
+
+# Streamlit secrets (keys); the .example file is tracked
+.streamlit/secrets.toml

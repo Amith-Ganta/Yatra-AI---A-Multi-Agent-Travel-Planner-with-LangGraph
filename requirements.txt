@@ -35,6 +35,9 @@ uvicorn==0.54.0
 python-multipart==0.0.32
 httpx==0.28.1
 
+# Streamlit front end (streamlit_app.py): runs the same graph in-process, no database needed
+streamlit==1.65.0
+
 # Logging
 python-json-logger==4.2.0
 

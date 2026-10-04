@@ -6,6 +6,16 @@ evidence, and it has been removed. The old text is not kept.
 
 ## Run it locally
 
+The quickest way is the Streamlit app. It needs no database and no Docker:
+
+```bash
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # then paste your keys into it
+streamlit run streamlit_app.py                                # http://localhost:8501
+```
+
+The Next.js front end and the API run with Docker:
+
 ```bash
 cp .env.example .env        # then set DEEPSEEK_API_KEY and, optionally, TAVILY_API_KEY
 docker compose up --build
@@ -23,9 +33,10 @@ has not been built on the author's machine, so a first build may need a fix.
 
 ## Deploy it
 
-The target is Render. The steps, the environment variables and the known limits of the free tier
-are in [DEPLOYMENT.md](DEPLOYMENT.md). When a deployment exists, its URL goes in this file, with
-the date it was last checked.
+The current target is Streamlit Community Cloud, with `streamlit_app.py` as the main file. The
+steps, the secrets to paste and the limits are in [DEPLOYMENT.md](DEPLOYMENT.md), section 13. An
+earlier attempt to run the API on Render (section 5 of the same file) did not come up and was not
+resolved. When a deployment exists, its URL goes in this file, with the date it was last checked.
 
 ## Where to read more
 

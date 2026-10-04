@@ -2,7 +2,7 @@
 
 ### A multi-agent travel planner that treats the LLM as an untrusted component: guarded at the door, paused for a human before anything is final, and held to tests that run against a real database.
 
-Built with **LangGraph, FastAPI, PostgreSQL, MCP, Next.js and Server-Sent Events**. Specified first, built spec by spec, then reviewed against its own claims. The defects that review found are listed below with the tests that now guard them.
+Built with **LangGraph, FastAPI, PostgreSQL, MCP, Next.js, Streamlit and Server-Sent Events**. Specified first, built spec by spec, then reviewed against its own claims. The defects that review found are listed below with the tests that now guard them.
 
 ---
 
@@ -40,7 +40,8 @@ The test, coverage and lint rows were run on my Windows machine on 3 October 202
 | API | Async FastAPI, typed SSE frames, thread memory, `/ready` returns 503 until the database answers | [`src/api/routes/`](src/api/routes) |
 | Persistence | PostgreSQL threads and messages, LangGraph checkpoints, pooled connections, idempotent migrations on startup, retry until the database is up | [`src/memory/`](src/memory), [`src/core/startup.py`](src/core/startup.py) |
 | Frontend | Next.js 15 (App Router), React 18, Tailwind. 4 pages, 11 components, 2 SSE and thread hooks. `tsc` and `next build` are clean | [`frontend/`](frontend) |
-| Tests | **397 passed**: 360 unit and 37 integration, the integration suite on a real PostgreSQL 17 with the LLM faked. Run with `requirements-eval.txt`, so the DeepEval tests are included | [`tests/`](tests) |
+| Streamlit app | A second front end (`streamlit_app.py`) that runs the same LangGraph inside the Streamlit process: no PostgreSQL and no separate API. Plans stay in memory. 95 tests cover its formatting, start-up, background runtime and page flow | [`src/ui/`](src/ui), [`streamlit_app.py`](streamlit_app.py), [`test_ui_app.py`](tests/unit/test_ui_app.py) |
+| Tests | **397 passed** before the Streamlit app was added (360 unit and 37 integration), the integration suite on a real PostgreSQL 17 with the LLM faked. Run with `requirements-eval.txt`, so the DeepEval tests are included | [`tests/`](tests) |
 | Coverage | **91.30%** of `src`, measured with `pytest --cov=src`. The MCP server files show 0% because they run in a subprocess that the coverage tool does not follow | `pytest.ini` |
 | Static checks | `ruff` and `black` clean on `src`, `tests`, `evals` and `.github/scripts`. `pyright` 0 errors on `src` | [`ci.yml`](.github/workflows/ci.yml) |
 | Browser check | Plan, live progress stream, redirect to the approval page, an empty rejection blocked, a rejection with feedback, the "revised draft N of 3" counter, the cap at 3 ending in "revision limit", approval, and the results page with its banners and weather. Driven in a real browser against the production Next build. The LLM, the supervisor and the three network tools were faked. The graph, the SSE stream, the plan documents and the PostgreSQL checkpointer were real | see [limits](#what-is-real-and-what-is-roadmap) |
@@ -168,6 +169,28 @@ sequenceDiagram
 ```
 
 The plan is saved before the `plan` frame is sent, so the results page can always reload it with `GET /api/threads/{thread_id}`. Any failure inside the stream becomes a single `error` frame with a generic message. Exception text is logged, never sent to the browser. A second run on a thread that is already running is refused, so two requests cannot resume the same checkpoint.
+
+---
+
+## Streamlit front end
+
+The easiest way to put Yatra online is the Streamlit app. It is a second front end next to the Next.js one, and it does not need the FastAPI service or PostgreSQL.
+
+```mermaid
+flowchart LR
+    BR([Browser]) --> ST["Streamlit page<br/>src/ui/app.py"]
+    ST -->|"start_turn"| LOOP["One background asyncio loop<br/>src/ui/runtime.py"]
+    LOOP --> G["The same 9-node LangGraph<br/>InMemorySaver"]
+    G -->|"stdio, or in-process fallback"| MCP["MCP servers: flights, weather, hotels"]
+    G --> LLM["DeepSeek, then OpenAI gpt-4.1-mini"]
+```
+
+- **How it works.** Streamlit re-runs the script on every click, in a worker thread that has no event loop. The graph, the MCP sessions and the LLM clients therefore live on one background loop, created once with `st.cache_resource`. The page starts a turn, polls the handle, and shows each agent as it finishes. The approval step is the same `interrupt()` and `Command(resume=...)` as in the API, with the same revision cap.
+- **Secrets.** On Streamlit Community Cloud, keys come from the app's Secrets box, and `src/ui/bootstrap.py` copies them into the environment before the settings module is imported. A variable that is already set wins. No `DATABASE_URL` is needed.
+- **The page is guarded the same way.** The supervisor still refuses off-topic requests (the third example button tests it), a rejection needs feedback, and a failed run shows one fixed message, never the provider's error text.
+- **The limits.** Plans live in the memory of one process, so a restart or a sleeping app loses them. The page says so in the sidebar. There is no login, and every plan costs real LLM calls, so do not publish the URL widely.
+
+How to run it and how to deploy it: [Run it](#run-it) and [`DEPLOYMENT.md`](DEPLOYMENT.md), section 13.
 
 ---
 
@@ -391,7 +414,8 @@ Smaller fixes landed with their own tests: hotel search through Tavily, weather 
 | Frontend | **Working.** Verified in a browser against a faked LLM, supervisor and network tools, with the real graph, stream and checkpointer behind it. There are no automated frontend tests | [`frontend/`](frontend) |
 | End-to-end run with a real LLM key | **Not done yet**, in the API or in the browser | none |
 | Docker image | **Not built on my machine.** The CI Verify workflow builds it | [`Dockerfile`](Dockerfile), [`verify.yml`](.github/workflows/verify.yml) |
-| Public deployment | **None yet.** A Render Blueprint ([`render.yaml`](render.yaml)) is prepared. Server-Sent Events on Render's free tier are untested | [`DEPLOYMENT.md`](DEPLOYMENT.md) |
+| Streamlit app | **Working locally, with a faked LLM.** Driven in a browser with a stub model behind the real graph (plan, live progress, approve, three revisions, the revision-limit message, an off-topic refusal) and by 27 page tests. **Not run on Streamlit Community Cloud, not run against a real LLM key.** Plans are kept in memory only | [`src/ui/`](src/ui), [`streamlit_app.py`](streamlit_app.py) |
+| Public deployment | **None confirmed.** The Streamlit app is ready to deploy on Streamlit Community Cloud ([`DEPLOYMENT.md`](DEPLOYMENT.md), section 13). A Render Blueprint ([`render.yaml`](render.yaml)) exists too, but the API deploy on Render did not come up and I did not find out why. Server-Sent Events on Render's free tier are untested | [`DEPLOYMENT.md`](DEPLOYMENT.md) |
 | Measured latency and cost per trip | **Not measured.** The `< 10 s` and `< $0.50` figures in the specs are targets. The 290 MB memory figure is an estimate from about 60 MB per measured server | [`specs/00-overview.spec.md`](specs/00-overview.spec.md) |
 
 ### Smaller known limits
@@ -449,6 +473,16 @@ docker compose up -d --build
 curl http://localhost:8000/ready
 ```
 
+**Streamlit app** (no PostgreSQL and no Docker needed):
+
+```bash
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # then put your DEEPSEEK_API_KEY and OPENAI_API_KEY in it
+streamlit run streamlit_app.py                               # http://localhost:8501
+```
+
+Keys can also come from the environment or a `.env` file. `.streamlit/secrets.toml` is git-ignored. Without a key for the main model, the page shows what is missing instead of failing later. Set `MCP_ENABLED=false` to run the tools in-process, which starts faster and uses less memory.
+
 **Frontend** (the browser calls the API directly, so set its address if it is not `localhost:8000`):
 
 ```bash
@@ -502,10 +536,13 @@ src/
   memory/       PostgreSQL pool, threads, migrations, saver.py (the LangGraph checkpointer)
   mcp_servers/  hotels (Tavily), flights (mock), weather (Open-Meteo): one stdio MCP server each
   tools/        the tool functions, and gateway.py that calls them through MCP with a fallback
+  ui/           the Streamlit app: app.py (page), views.py (plan tabs), formatting.py, runtime.py (background loop), bootstrap.py (secrets)
+streamlit_app.py  entry point for Streamlit (local and Community Cloud)
+.streamlit/     config.toml and secrets.toml.example (the real secrets.toml is git-ignored)
 evals/          DeepEval agent evals: eval_agent.py, 15 goldens, a custom plan judge, report writer
 frontend/       Next.js 15 app: home, plan, results and approve pages
 specs/          10 specification files that drive the build
-tests/          unit (360) and integration (37) suites
+tests/          unit (455, of which 95 are for the Streamlit app) and integration (37) suites
 docs/           AUDIT.md, BLOCKED.md and the build trail
 .mcp.json       the same three servers, for any MCP client such as Claude Code
 requirements-eval.txt  requirements.txt plus deepeval, for the test and eval jobs

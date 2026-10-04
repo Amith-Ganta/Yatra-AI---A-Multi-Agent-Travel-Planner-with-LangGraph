@@ -1,11 +1,16 @@
 # Yatra AI: Deployment Guide
 
-Yatra AI is two separate programs, and they are deployed separately.
+Yatra AI has two front ends. The Next.js app talks to a FastAPI server, and the two are deployed
+separately. The Streamlit app is one program with no server and no database, and it is the
+simplest way to put the planner online (section 13).
 
 | Part | What it is | Good places to run it |
 |------|------------|-----------------------|
+| Streamlit app | `streamlit_app.py` and `src/ui/`; runs the LangGraph in the same process, plans kept in memory | Streamlit Community Cloud (section 13), or `streamlit run streamlit_app.py` anywhere |
 | Frontend | Next.js 15 app in `frontend/` | Render or Vercel (or any Node host) |
 | API | FastAPI + LangGraph in the repo root, needs PostgreSQL | A container host: Render (see section 5), Railway, Fly.io, Cloud Run, an EC2 box |
+
+The rest of this guide, apart from section 13, is about the Next.js app and the API.
 
 The API cannot run on Vercel Functions. `POST /api/plan` streams its progress as Server-Sent Events while the agents work, and that needs a long-lived process and a PostgreSQL connection pool.
 
@@ -28,7 +33,8 @@ services and need no extra port, host or deployment step.
 - Verified locally: the API against a real PostgreSQL 17 (app tables and the LangGraph checkpointer), the three MCP servers as real child processes over stdio, the production build of the frontend, the full browser flow (plan, live progress, approval page, rejection with feedback, the three-revision cap, approve, results) with a faked LLM, and the CORS rules with `curl` and in the browser. The backend suite is 397 tests (360 unit and 37 integration) at 91.30% coverage, run on Windows against a local PostgreSQL 17. The model fallback chain and the DeepEval agent-eval suite are covered by those tests with fake clients and a stub judge.
 - Not verified: a real run of the app in a browser against the live DeepSeek or OpenAI API (only the eval runs made live model calls, and their logs do not show which model answered, so the fallback chain has never been seen switching providers, and the wire names `deepseek-flash` and `gpt-4.1-mini` come from the providers' documentation), the Docker image (it has never been built on this machine), Server-Sent Events through Render's free tier, and the memory use of the MCP servers on Render. The steps below for Render, Vercel and other container hosts, and the `render.yaml` Blueprint, are written from the settings the code reads and from the Render documentation. Treat your first deployment as the real test and use the checklist in section 7.
 - On GitHub, `CI Pipeline` (lint, tests, Docker build) and `Verify` passed on commit 07a4dc0. The `agent-evals` job ran three times by hand: the first run failed before scoring, the second produced real scores but failed the original gate, and the third (run 37143852885, commit 07a4dc0) passed the revised gate (see section 11). Look at the Actions tab for the latest result (`specs/08-gate-ci.spec.md`).
-- Not deployed anywhere yet.
+- The Streamlit app has 95 tests of its own: the text and table helpers, the secrets and environment set-up, the planner runtime (a real graph on a real background event loop, with the LLM and the tools faked: approval pause, revisions, the revision limit, a refused request, a failing run, a timeout), and the page itself, driven with Streamlit's `AppTest` against a fake runtime. I also ran it in a browser with a stub LLM: the trip form and the free-text box, live progress, the draft plan, approve, three revisions, the revision-limit message, an off-topic request, and the Ctrl+Enter case. Not verified for the Streamlit app: a run on Streamlit Community Cloud, a run with real DeepSeek or OpenAI keys, the MCP servers and their memory use on Community Cloud, and anything that survives a restart (plans are kept in memory only).
+- Not deployed anywhere yet. An attempt to run the API on Render (section 5) did not come up, and I did not find the cause, so treat section 5 as untested. The Streamlit app has not been deployed either.
 
 ## 1. Environment variables
 
@@ -262,3 +268,98 @@ check. Render does not read GitHub secrets, so none of this blocks a deployment.
 docker compose down       # stop
 docker compose down -v    # stop and delete the local database volume
 ```
+
+## 13. Streamlit Community Cloud
+
+The Streamlit app (`streamlit_app.py`, code in `src/ui/`) needs no database, no API server and no
+Docker. It runs the same LangGraph as the API inside the Streamlit process, so the supervisor
+guardrail, the three tools, the approval pause and the revision loop behave the same way. Plans
+live in memory (`InMemorySaver`), not in PostgreSQL.
+
+### Run it on your own machine first
+
+```bash
+pip install -r requirements.txt
+cp .streamlit/secrets.toml.example .streamlit/secrets.toml   # then paste your keys into it
+streamlit run streamlit_app.py
+```
+
+`.streamlit/secrets.toml` is git-ignored. A `.env` file with the same names works too. A variable
+that is already set in the environment wins over the secrets file.
+
+### Deploy it (you do this in your own Streamlit account)
+
+1. Open https://share.streamlit.io and sign in with GitHub. Allow access to the repository.
+2. Choose **Create app** and deploy from a GitHub repository (the button names change from time
+   to time).
+3. Repository: `Amith-Ganta/Yatra-AI---A-Multi-Agent-Travel-Planner-with-LangGraph`. Branch: `main`.
+   Main file path: `streamlit_app.py`.
+4. Open **Advanced settings**. Pick **Python 3.11** (the version the app was developed and tested
+   on; a newer default may not suit the pinned packages). Paste the secrets below into the
+   **Secrets** box.
+5. Choose **Deploy**. The first build installs `requirements.txt` and takes a few minutes. Read the
+   build log on the right if it fails.
+
+Secrets (TOML). Use your own keys, and do not put them anywhere else:
+
+```toml
+DEEPSEEK_API_KEY = "your-deepseek-key"
+OPENAI_API_KEY = "your-openai-key"
+# TAVILY_API_KEY = "your-tavily-key"   # optional, live hotel search
+# MCP_ENABLED = false                  # optional, see below
+```
+
+Do not add `DATABASE_URL`. The app sets an unused placeholder itself, because the settings class
+insists on a value even though the Streamlit app never opens a connection.
+
+Every top-level line in the Secrets box becomes an environment variable with the name in upper
+case, so any variable from section 1 (`LLM_RUNTIME_MODEL`, `LLM_FALLBACK_MODELS`,
+`MCP_STARTUP_TIMEOUT`, `MAX_REVISIONS` and the others) can be set there as well. The API-only
+ones (`CORS_ORIGINS`, `PORT`) do nothing in this app. Secrets can be changed later under **Manage
+app**, **Settings**, **Secrets**, and the app restarts.
+
+If a model key is missing, the app says which one and does not start a plan. A missing
+`OPENAI_API_KEY` is only a warning in the logs: the fallback model is skipped.
+
+### Which dependency file Community Cloud reads
+
+Community Cloud looks for `uv.lock`, then `Pipfile`, then `environment.yml`, then
+`requirements.txt`, then `pyproject.toml`, and uses the first one it finds
+([Streamlit docs, app dependencies](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies)).
+This repository has no `uv.lock`, `Pipfile` or `environment.yml`, so `requirements.txt` is used. The
+`pyproject.toml` only holds tool settings and is never reached. Do not add one of the three
+higher-priority files without checking this. `requirements.txt` also carries the API and test
+packages (FastAPI, psycopg, pytest, pyright), so the build is heavier than the app needs. That
+costs build time only. I have not built it on Community Cloud, so read the first build log.
+
+### MCP servers on Community Cloud
+
+By default the flights, weather and hotels tools start as three MCP server child processes, as in
+the API. The Streamlit docs list Community Cloud limits of 690 MB minimum and 2.7 GB maximum of
+memory per app (the page is dated February 2024, so check it for the current numbers). I measured
+about 674 MB for the API with the MCP servers running, and Streamlit and the Python imports come
+on top, so the app may sit above the guaranteed minimum and depend on spare capacity. I have not
+measured the Streamlit app on Community Cloud.
+
+The servers start one after the other, and each may take up to `MCP_STARTUP_TIMEOUT` seconds
+(default 20). A server that is too slow or fails is skipped, and the same tool runs in-process,
+so the plan still works. The **Tools** block in the sidebar shows what is running. If the app is
+slow to start or keeps restarting, set `MCP_ENABLED = false` in the Secrets box: the tools then
+run in-process and the plans are the same.
+
+### What to expect
+
+- **Plans are kept in memory.** A restart, a redeploy or the app going to sleep (Community Cloud
+  does this after about 12 hours without visitors) loses every plan. Closing or reloading the tab
+  also loses your place, because the trip id lives in the browser session. Streamlit then shows
+  the start page again.
+- **The first load after a sleep takes about a minute**, because the app wakes up and imports the
+  graph.
+- **There is no login and no rate limit.** Anyone with the link can start a plan, and every plan
+  costs real LLM calls on your keys. Set a spending limit with your model providers before you
+  share the link, and look at the app's Share settings in Streamlit if you want to restrict who
+  can open it (I have not checked what the free tier allows).
+- **Flights are sample data**, and the first itinerary draft is a template. See section 9, which
+  applies here too.
+- **One planner per process.** All sessions share one background event loop and one in-memory
+  checkpointer, and each browser session has its own trip id.
